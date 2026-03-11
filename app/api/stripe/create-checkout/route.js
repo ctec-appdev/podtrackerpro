@@ -4,9 +4,6 @@ import { createCheckout } from "@/libs/stripe";
 import connectMongo from "@/libs/mongoose";
 import User from "@/models/User";
 
-// This function is used to create a Stripe Checkout Session (one-time payment or subscription)
-// It's called by the <ButtonCheckout /> component
-// By default, it doesn't force users to be authenticated. But if they are, it will prefill the Checkout data with their email and/or credit card
 export async function POST(req) {
   const body = await req.json();
 
@@ -15,12 +12,16 @@ export async function POST(req) {
       { error: "Price ID is required" },
       { status: 400 }
     );
-  } else if (!body.successUrl || !body.cancelUrl) {
+  }
+
+  if (!body.successUrl || !body.cancelUrl) {
     return NextResponse.json(
       { error: "Success and cancel URLs are required" },
       { status: 400 }
     );
-  } else if (!body.mode) {
+  }
+
+  if (!body.mode) {
     return NextResponse.json(
       {
         error:
@@ -33,9 +34,25 @@ export async function POST(req) {
   try {
     const session = await auth();
 
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: "You must be signed in to start checkout." },
+        { status: 401 }
+      );
+    }
+
     await connectMongo();
 
-    const user = await User.findById(session?.user?.id);
+    const user =
+      (await User.findById(session.user.id)) ||
+      (session?.user?.email ? await User.findOne({ email: session.user.email }) : null);
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "User record not found. Please sign out and sign in again." },
+        { status: 404 }
+      );
+    }
 
     const { priceId, mode, successUrl, cancelUrl } = body;
 
@@ -44,12 +61,8 @@ export async function POST(req) {
       mode,
       successUrl,
       cancelUrl,
-      // If user is logged in, it will pass the user ID to the Stripe Session so it can be retrieved in the webhook later
       clientReferenceId: user?._id?.toString(),
-      // If user is logged in, this will automatically prefill Checkout data like email and/or credit card for faster checkout
       user,
-      // If you send coupons from the frontend, you can pass it here
-      // couponId: body.couponId,
     });
 
     return NextResponse.json({ url: stripeSessionURL });

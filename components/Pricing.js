@@ -1,10 +1,6 @@
 import config from "@/config";
 import ButtonCheckout from "./ButtonCheckout";
 
-// <Pricing/> displays the pricing plans for your app
-// It's your Stripe config in config.js.stripe.plans[] that will be used to display the plans
-// <ButtonCheckout /> renders a button that will redirect the user to Stripe checkout called the /api/stripe/create-checkout API endpoint with the correct priceId
-
 const Pricing = () => {
   return (
     <section className="bg-base-200 overflow-hidden" id="pricing">
@@ -12,27 +8,23 @@ const Pricing = () => {
         <div className="flex flex-col text-center w-full mb-20">
           <p className="font-medium text-primary mb-8">Pricing</p>
           <h2 className="font-bold text-3xl lg:text-5xl tracking-tight">
-            Save hours of repetitive code and ship faster!
+            PODTrackerPro plans for every stage
           </h2>
         </div>
 
         <div className="relative flex justify-center flex-col lg:flex-row items-center lg:items-stretch gap-8">
           {config.stripe.plans.map((plan) => (
-            <div key={plan.priceId} className="relative w-full max-w-lg">
+            <div key={plan.name} className="relative w-full max-w-lg">
               {plan.isFeatured && (
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20">
-                  <span
-                    className={`badge text-xs text-primary-content font-semibold border-0 bg-primary`}
-                  >
+                  <span className="badge text-xs text-primary-content font-semibold border-0 bg-primary">
                     POPULAR
                   </span>
                 </div>
               )}
 
               {plan.isFeatured && (
-                <div
-                  className={`absolute -inset-[1px] rounded-[9px] bg-primary z-10`}
-                ></div>
+                <div className="absolute -inset-[1px] rounded-[9px] bg-primary z-10"></div>
               )}
 
               <div className="relative flex flex-col h-full gap-5 lg:gap-8 z-10 bg-base-100 p-8 rounded-lg">
@@ -40,32 +32,20 @@ const Pricing = () => {
                   <div>
                     <p className="text-lg lg:text-xl font-bold">{plan.name}</p>
                     {plan.description && (
-                      <p className="text-base-content/80 mt-2">
-                        {plan.description}
-                      </p>
+                      <p className="text-base-content/80 mt-2">{plan.description}</p>
                     )}
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  {plan.priceAnchor && (
-                    <div className="flex flex-col justify-end mb-[4px] text-lg ">
-                      <p className="relative">
-                        <span className="absolute bg-base-content h-[1.5px] inset-x-0 top-[53%]"></span>
-                        <span className="text-base-content/80">
-                          ${plan.priceAnchor}
-                        </span>
-                      </p>
-                    </div>
-                  )}
-                  <p className={`text-5xl tracking-tight font-extrabold`}>
-                    ${plan.price}
-                  </p>
-                  <div className="flex flex-col justify-end mb-[4px]">
+
+                <div className="flex gap-2 items-end">
+                  <p className="text-5xl tracking-tight font-extrabold">${plan.price}</p>
+                  <div className="flex flex-col justify-end mb-[6px]">
                     <p className="text-xs text-base-content/60 uppercase font-semibold">
-                      USD
+                      USD{plan.mode === "subscription" ? "/mo" : ""}
                     </p>
                   </div>
                 </div>
+
                 {plan.features && (
                   <ul className="space-y-2.5 leading-relaxed text-base flex-1">
                     {plan.features.map((feature, i) => (
@@ -82,17 +62,23 @@ const Pricing = () => {
                             clipRule="evenodd"
                           />
                         </svg>
-
-                        <span>{feature.name} </span>
+                        <span>{feature.name}</span>
                       </li>
                     ))}
                   </ul>
                 )}
+
                 <div className="space-y-2">
-                  <ButtonCheckout priceId={plan.priceId} />
+                  {plan.isFree ? (
+                    <button className="btn btn-outline btn-block" disabled>
+                      Included by default
+                    </button>
+                  ) : (
+                    <ButtonCheckout priceId={plan.priceId} mode={plan.mode || "subscription"} />
+                  )}
 
                   <p className="flex items-center justify-center gap-2 text-sm text-center text-base-content/80 font-medium relative">
-                    Pay once. Access forever.
+                    {plan.mode === "subscription" ? "Billed monthly. Cancel anytime." : "One-time payment."}
                   </p>
                 </div>
               </div>

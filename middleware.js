@@ -1,10 +1,7 @@
 import NextAuth from "next-auth"
 import GoogleProvider from "next-auth/providers/google"
+import { NextResponse } from "next/server"
 
-// Edge-compatible configuration for middleware (without EmailProvider and MongoDB adapter)
-// When using NextAuth.js in middleware, you need to use the edge-compatible configuration
-// This is because the middleware runs in an edge environment, and the EmailProvider is not compatible with edge environments
-// The MongoDB adapter is also not compatible with edge environments, so we need to use the edge-compatible configuration
 const { auth } = NextAuth({
   providers: [
     GoogleProvider({
@@ -19,10 +16,16 @@ const { auth } = NextAuth({
 })
 
 export default auth(async function middleware(req) {
-  // Your custom middleware logic goes here if needed
+  const session = req.auth
+  const isProtected = req.nextUrl.pathname.startsWith("/dashboard")
+
+  if (isProtected && !session) {
+    const signInUrl = new URL("/api/auth/signin", req.nextUrl.origin)
+    signInUrl.searchParams.set("callbackUrl", req.nextUrl.pathname)
+    return NextResponse.redirect(signInUrl)
+  }
 })
 
-// Optionally, don't invoke Middleware on some paths
 export const config = {
   matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
-} 
+}

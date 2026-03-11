@@ -1675,7 +1675,7 @@ Return JSON array: [{"subNiche":"...","demand":1-10,"demandReason":"short","comp
               marginBottom: 16,
             }}
           >
-            ◎ Sub-Niches for "{niche}"
+            ◎ Sub-Niches for &quot;{niche}&quot;
           </div>
           {subNicheResults.map((n, i) => {
             const compositeScore = ((n.demand + n.evergreen + n.brandability + (10 - n.competition)) / 4).toFixed(1);
@@ -2274,7 +2274,7 @@ function BriefsView({ data, addItem, deleteItem, loading, setLoading, plan, usag
                   + Add
                 </Btn>
               </div>
-              <div style={{ color: C.white, fontSize: 19, fontWeight: 600, marginBottom: 4 }}>"{b.slogan}"</div>
+              <div style={{ color: C.white, fontSize: 19, fontWeight: 600, marginBottom: 4 }}>&quot;{b.slogan}&quot;</div>
               <div style={{ color: C.textDim, fontSize: 15 }}>{b.concept}</div>
             </div>
           ))}
@@ -2366,7 +2366,7 @@ function SEOView({ data, addItem, deleteItem, loading, setLoading, plan, usage, 
         </div>
         {brief && (
           <div style={{ fontSize: 15, color: C.textDim, fontFamily: font }}>
-            {brief.id}: "{brief.slogan}" · {brief.niche} · {brief.style}
+            {brief.id}: &quot;{brief.slogan}&quot; · {brief.niche} · {brief.style}
           </div>
         )}
       </div>
@@ -2718,7 +2718,7 @@ function TrademarkView({ loading, setLoading, plan, usage, setUsage }) {
               >
                 Trademark Analysis
               </div>
-              <h2 style={{ fontSize: 23, fontWeight: 700, margin: 0, color: C.white }}>"{results.phrase}"</h2>
+              <h2 style={{ fontSize: 23, fontWeight: 700, margin: 0, color: C.white }}>&quot;{results.phrase}&quot;</h2>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <Badge color={riskColor(results.riskLevel)}>{results.riskLevel} Risk</Badge>
@@ -2882,7 +2882,7 @@ function TrademarkView({ loading, setLoading, plan, usage, setUsage }) {
               AI analysis is a starting point, not legal advice. Always confirm with the official trademark database before listing.
             </div>
             <div style={{ fontSize: 14, fontFamily: font, color: C.accent, wordBreak: "break-all" }}>
-              https://tmsearch.uspto.gov - Search for "{results.phrase}" in the free-form search
+              https://tmsearch.uspto.gov - Search for &quot;{results.phrase}&quot; in the free-form search
             </div>
           </div>
         </div>
@@ -3241,7 +3241,7 @@ function GuideView() {
         <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: 20, marginBottom: 16 }}>
           <h3 style={h3}>Source 3: Persistent Storage</h3>
           <p style={p}>
-            Everything you save is stored in a cross-session storage layer tied to your account. Your data persists between chat sessions so you don't lose your work. If you delete an item by clicking ✕, it's gone permanently.
+            Everything you save is stored in a cross-session storage layer tied to your account. Your data persists between chat sessions so you don&apos;t lose your work. If you delete an item by clicking ✕, it&apos;s gone permanently.
           </p>
         </div>
 
@@ -3272,6 +3272,7 @@ function GuideView() {
     </div>
   );
 }
+
 
 
 

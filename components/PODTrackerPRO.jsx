@@ -1430,6 +1430,25 @@ function NichesView({ data, addItem, deleteItem, importItems, loading, setLoadin
   // Free plan cap check
   const atNicheCap = plan === "free" && data.niches.length >= limits.maxNiches;
 
+  const handleAdd = () => {
+    if (!niche.trim()) return;
+    if (atNicheCap) { alert(`Free plan limit: ${limits.maxNiches} niches.`); return; }
+    addItem("niches", {
+      niche: niche.trim(),
+      subNiche: subNiche.trim() || "General",
+      demand: "",
+      competition: "",
+      evergreen: "",
+      brandability: "",
+      score: "",
+      status: "Researching",
+      notes: "",
+      date: todayISO(),
+    });
+    setNiche("");
+    setSubNiche("");
+  };
+
   const dcebScore = async () => {
     const target = subNiche ? `${niche} > ${subNiche}` : niche;
     if (!target.trim()) return;
@@ -1529,6 +1548,9 @@ Return JSON array: [{"subNiche":"...","demand":1-10,"demandReason":"short","comp
           </div>
         )}
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <Btn onClick={handleAdd} disabled={atNicheCap || !niche.trim()} style={{ padding: "10px 20px", fontSize: 19 }}>
+            + Add Niche
+          </Btn>
           {limits.dceb > 0 ? (
             <Btn onClick={dcebScore} disabled={!niche.trim() || loading} style={{ padding: "10px 20px", fontSize: 19 }}>
               ✦ DCEB Auto-Score <UsageBadge used={usage.dceb || 0} limit={limits.dceb} />
@@ -3272,6 +3294,7 @@ function GuideView() {
     </div>
   );
 }
+
 
 
 

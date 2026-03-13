@@ -1,7 +1,10 @@
 "use client";
 
+import Image from "next/image";
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useSession } from "next-auth/react";
 import CannyFeedback from "@/components/CannyFeedback";
+import apiClient from "@/libs/api";
 
 // ─── CONSTANTS ─────────────────────────────────
 const PLATFORMS = ["Amazon Merch", "Redbubble", "Etsy", "TeeSpring/Spring"];
@@ -973,6 +976,7 @@ function CSVSampleButton({ label, filename, columns, sampleRow }) {
 
 // ─── MAIN APP ──────────────────────────────────
 export default function PODTracker() {
+  const { data: session, status } = useSession();
   const [tab, setTab] = useState("dashboard");
   const [data, setData] = useState({
     niches: [],
@@ -1002,6 +1006,31 @@ export default function PODTracker() {
       setLoaded(true);
     })();
   }, []);
+
+  useEffect(() => {
+    if (status !== "authenticated") {
+      return;
+    }
+
+    const pendingName = window.localStorage.getItem("podtrackerpro_signup_name");
+    const trimmedName = pendingName?.trim();
+
+    if (!trimmedName) {
+      return;
+    }
+
+    if (session?.user?.name === trimmedName) {
+      window.localStorage.removeItem("podtrackerpro_signup_name");
+      return;
+    }
+
+    apiClient
+      .post("/user/profile", { name: trimmedName })
+      .then(() => {
+        window.localStorage.removeItem("podtrackerpro_signup_name");
+      })
+      .catch(() => {});
+  }, [session?.user?.name, status]);
 
   const update = useCallback(async (key, newData) => {
     setData((prev) => ({ ...prev, [key]: newData }));
@@ -1072,10 +1101,13 @@ export default function PODTracker() {
             marginBottom: 8,
           }}
         >
-          <img
+          <Image
             src={LOGO_SRC}
             alt="PODTrackerPro"
-            style={{ width: "100%", maxWidth: 168, display: "block", objectFit: "contain" }}
+            width={168}
+            height={31}
+            unoptimized
+            style={{ width: "100%", maxWidth: 168, height: "auto", display: "block", objectFit: "contain" }}
           />
         </div>
 
@@ -1578,7 +1610,7 @@ Return JSON array: [{"subNiche":"...","demand":1-10,"demandReason":"short","comp
           </div>
         )}
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <Btn onClick={handleAdd} disabled={atNicheCap || !niche.trim()} style={{ padding: "10px 20px", fontSize: 19 }}>
+          <Btn onClick={handleAdd} disabled={atNicheCap || !niche.trim()} style={{ padding: "8px 16px", fontSize: 15 }}>
             + Add Niche
           </Btn>
           {limits.dceb > 0 ? (

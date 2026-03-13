@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
@@ -16,6 +16,20 @@ export default function SignupPage() {
 function SignupContent() {
     const searchParams = useSearchParams();
     const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
+    const [name, setName] = useState("");
+    const [nameError, setNameError] = useState("");
+
+    const handleSignup = () => {
+        const trimmedName = name.trim();
+
+        if (!trimmedName) {
+            setNameError("Please enter your name.");
+            return;
+        }
+
+        window.localStorage.setItem("podtrackerpro_signup_name", trimmedName);
+        signIn("google", { callbackUrl });
+    };
 
     return (
         <main style={{
@@ -136,6 +150,55 @@ function SignupContent() {
           height: 1px;
           background: rgba(240,244,255,0.09);
           margin-bottom: 28px;
+        }
+
+        .field-group {
+          margin-bottom: 18px;
+        }
+
+        .field-label {
+          display: block;
+          font-size: 13px;
+          font-weight: 500;
+          color: rgba(240,244,255,0.72);
+          margin-bottom: 8px;
+        }
+
+        .text-input {
+          width: 100%;
+          background: rgba(13,27,46,0.72);
+          color: #F0F4FF;
+          border: 1px solid rgba(240,244,255,0.12);
+          border-radius: 12px;
+          padding: 14px 16px;
+          font-family: 'DM Sans', sans-serif;
+          font-size: 15px;
+          outline: none;
+          transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+
+        .text-input::placeholder {
+          color: rgba(240,244,255,0.32);
+        }
+
+        .text-input:focus {
+          border-color: rgba(41,100,205,0.9);
+          box-shadow: 0 0 0 3px rgba(41,100,205,0.18);
+          background: rgba(13,27,46,0.9);
+        }
+
+        .field-help {
+          font-size: 12px;
+          line-height: 1.5;
+          color: rgba(240,244,255,0.38);
+          margin-top: 8px;
+        }
+
+        .field-error {
+          font-size: 12px;
+          line-height: 1.5;
+          color: #FF9A9A;
+          margin-top: 8px;
         }
 
         .google-btn {
@@ -295,10 +358,31 @@ function SignupContent() {
 
                 <div className="divider" />
 
+                <div className="field-group">
+                    <label className="field-label" htmlFor="signup-name">Full name</label>
+                    <input
+                        id="signup-name"
+                        className="text-input"
+                        type="text"
+                        placeholder="Jane Doe"
+                        autoComplete="name"
+                        value={name}
+                        onChange={(e) => {
+                            setName(e.target.value);
+                            if (nameError) setNameError("");
+                        }}
+                    />
+                    {nameError ? (
+                        <p className="field-error">{nameError}</p>
+                    ) : (
+                        <p className="field-help">We&apos;ll use this for marketing and onboarding personalization.</p>
+                    )}
+                </div>
+
                 {/* Google Sign In */}
                 <button
                     className="google-btn"
-                    onClick={() => signIn("google", { callbackUrl })}
+                    onClick={handleSignup}
                 >
                     {/* Google SVG icon */}
                     <svg className="google-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">

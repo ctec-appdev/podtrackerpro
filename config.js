@@ -1,6 +1,6 @@
 const config = {
   // REQUIRED
-  appName: "ShipFast",
+  appName: "PODTrackerPRO",
   // REQUIRED: a short description of your app for SEO tags (can be overwritten)
   appDescription:
     "The NextJS boilerplate with all you need to build your SaaS, AI tool, or any other web app.",
@@ -27,7 +27,8 @@ const config = {
         isFree: true,
       },
       {
-        priceId: process.env.STRIPE_PRICE_STARTER_MONTHLY || "",
+        priceId: "price_1TAFHTK0qFDtdaYnmboXMnVK",
+        checkoutUrl: "https://buy.stripe.com/3cI14oaXQ51VaHde4N9ws03",
         name: "Starter",
         description: "For solo creators shipping consistently",
         price: 9.99,
@@ -41,7 +42,8 @@ const config = {
       },
       {
         isFeatured: true,
-        priceId: process.env.STRIPE_PRICE_BUSINESS_MONTHLY || "",
+        priceId: "price_1TAFMYK0qFDtdaYnSQNCHQzc",
+        checkoutUrl: "https://buy.stripe.com/3cIbJ2aXQ9ib7v10dX9ws02",
         name: "Business",
         description: "For teams and power users",
         price: 19.99,
@@ -64,9 +66,9 @@ const config = {
   },
   resend: {
     // REQUIRED - Email 'From' field to be used when sending magic login links
-    fromNoReply: `ShipFast <noreply@resend.shipfa.st>`,
+    fromNoReply: `PODTrackerPRO <noreply@resend.shipfa.st>`,
     // REQUIRED - Email 'From' field to be used when sending other emails, like abandoned carts, updates etc..
-    fromAdmin: `Marc at ShipFast <marc@resend.shipfa.st>`,
+    fromAdmin: `PODTrackerPRO <marc@resend.shipfa.st>`,
     // Email shown to customer if need support. Leave empty if not needed => if empty, set up Crisp above, otherwise you won't be able to offer customer support."
     supportEmail: "marc.louvion@gmail.com",
   },

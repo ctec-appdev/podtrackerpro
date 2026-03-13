@@ -5,15 +5,15 @@ import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 
-export default function SignupPage() {
+export default function SigninPage() {
     return (
         <Suspense fallback={null}>
-            <SignupContent />
+            <SigninContent />
         </Suspense>
     );
 }
 
-function SignupContent() {
+function SigninContent() {
     const searchParams = useSearchParams();
     const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
 
@@ -28,9 +28,8 @@ function SignupContent() {
             fontFamily: "'DM Sans', sans-serif",
             position: "relative",
             overflow: "hidden",
+            padding: "24px",
         }}>
-
-            {/* Google Fonts */}
             <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@300;400;500;600&display=swap');
 
@@ -174,37 +173,29 @@ function SignupContent() {
           flex-shrink: 0;
         }
 
-        .terms {
-          font-size: 12px;
-          color: rgba(240,244,255,0.3);
+        .helper-text {
+          font-size: 13px;
+          color: rgba(240,244,255,0.45);
           text-align: center;
-          margin-top: 20px;
+          margin-top: 18px;
           line-height: 1.6;
         }
 
-        .terms a {
-          color: rgba(240,244,255,0.5);
-          text-decoration: underline;
-          text-underline-offset: 2px;
-        }
-
-        .terms a:hover { color: #2964CD; }
-
-        .login-row {
+        .alt-row {
           text-align: center;
           margin-top: 28px;
           font-size: 13px;
           color: rgba(240,244,255,0.4);
         }
 
-        .login-row a {
+        .alt-row a {
           color: #2964CD;
           text-decoration: none;
           font-weight: 500;
           margin-left: 4px;
         }
 
-        .login-row a:hover { text-decoration: underline; }
+        .alt-row a:hover { text-decoration: underline; }
 
         .features-strip {
           position: relative;
@@ -262,45 +253,47 @@ function SignupContent() {
 
         @keyframes pulse {
           0%, 100% { opacity: 1; transform: scale(1); }
-          50%       { opacity: 0.4; transform: scale(0.8); }
+          50% { opacity: 0.4; transform: scale(0.8); }
+        }
+
+        @media (max-width: 640px) {
+          .card {
+            padding: 36px 24px;
+          }
+
+          .heading {
+            font-size: 24px;
+          }
         }
       `}</style>
 
-            {/* Background grid */}
             <div className="grid-bg" />
             <div className="glow" />
 
-            {/* Card */}
             <div className="card">
-
-                {/* Logo */}
                 <Link href="/" className="logo-row">
                     <div className="logo-icon">P</div>
                     <span className="logo-text">POD Tracker <span>Pro</span></span>
                 </Link>
 
-                {/* Free plan badge */}
                 <div style={{ display: "flex", justifyContent: "center" }}>
                     <div className="plan-badge">
                         <div className="plan-dot" />
-                        Free plan — no credit card required
+                        Welcome back
                     </div>
                 </div>
 
-                {/* Heading */}
-                <h1 className="heading">Create your account</h1>
+                <h1 className="heading">Sign in to your account</h1>
                 <p className="subheading">
-                    Start tracking your POD business across Amazon Merch, Redbubble, Etsy, and Spring — for free.
+                    Continue tracking your POD business across Amazon Merch, Redbubble, Etsy, and Spring.
                 </p>
 
                 <div className="divider" />
 
-                {/* Google Sign In */}
                 <button
                     className="google-btn"
                     onClick={() => signIn("google", { callbackUrl })}
                 >
-                    {/* Google SVG icon */}
                     <svg className="google-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                         <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
                         <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
@@ -310,32 +303,22 @@ function SignupContent() {
                     Continue with Google
                 </button>
 
-                {/* Terms */}
-                <p className="terms">
-                    By signing up, you agree to our{" "}
-                    <a href="/terms" target="_blank" rel="noopener noreferrer">Terms of Service</a>
-                    {" "}and{" "}
-                    <a href="/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.
+                <p className="helper-text">
+                    Use the Google account linked to your POD Tracker Pro workspace.
                 </p>
 
-                {/* Login link */}
-                <div className="login-row">
-                    Already have an account?
-                    <a href="/signin">Log in</a>
+                <div className="alt-row">
+                    Don&apos;t have an account?
+                    <a href="/signup">Create one</a>
                 </div>
             </div>
 
-            {/* Feature pills below card */}
             <div className="features-strip">
-                <div className="feature-pill"><div className="feature-pill-dot" />Free plan forever</div>
+                <div className="feature-pill"><div className="feature-pill-dot" />Fast access</div>
                 <div className="feature-pill"><div className="feature-pill-dot" />All 4 platforms</div>
-                <div className="feature-pill"><div className="feature-pill-dot" />No credit card</div>
-                <div className="feature-pill"><div className="feature-pill-dot" />Cancel anytime</div>
+                <div className="feature-pill"><div className="feature-pill-dot" />Secure Google auth</div>
+                <div className="feature-pill"><div className="feature-pill-dot" />Dashboard ready</div>
             </div>
-
         </main>
     );
 }
-
-
-

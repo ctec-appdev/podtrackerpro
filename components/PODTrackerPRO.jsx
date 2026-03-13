@@ -1154,7 +1154,7 @@ export default function PODTracker() {
             </span>
             {plan === "free" && (
               <a
-                href="#upgrade"
+                href="/pricing"
                 style={{ fontSize: 11, color: C.accent, fontFamily: font, textDecoration: "none" }}
               >
                 Upgrade ↗
@@ -1285,7 +1285,7 @@ function DashboardView({ data, setTab, plan, usage }) {
           })}
         </div>
         {plan === "free" && (
-          <a href="#upgrade" style={{ fontSize: 13, color: C.accent, fontFamily: font, fontWeight: 600, textDecoration: "none" }}>
+          <a href="/pricing" style={{ fontSize: 13, color: C.accent, fontFamily: font, fontWeight: 600, textDecoration: "none" }}>
             Upgrade for AI features ↗
           </a>
         )}
@@ -1574,7 +1574,7 @@ Return JSON array: [{"subNiche":"...","demand":1-10,"demandReason":"short","comp
         </div>
         {atNicheCap && (
           <div style={{ marginBottom: 12, padding: "8px 12px", background: C.warnDim, borderRadius: 6, fontSize: 14, color: C.warn, fontFamily: font }}>
-            ⚠ Free plan limit: {limits.maxNiches} niches. <a href="#upgrade" style={{ color: C.accent }}>Upgrade</a> to add unlimited niches.
+            ⚠ Free plan limit: {limits.maxNiches} niches. <a href="/pricing" style={{ color: C.accent }}>Upgrade</a> to add unlimited niches.
           </div>
         )}
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>

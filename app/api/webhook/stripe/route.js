@@ -15,6 +15,27 @@ function planFromPriceId(priceId) {
   return PRICE_TO_PLAN[priceId] || "free";
 }
 
+function updateFromPlan(plan, extra = {}) {
+  return {
+    ...extra,
+    plan,
+    hasAccess: plan !== "free",
+  };
+}
+
+function planFromSubscription(subscription) {
+  const priceId = subscription?.items?.data?.[0]?.price?.id || null;
+  const activeStatuses = new Set(["active", "trialing"]);
+  const plan = activeStatuses.has(subscription?.status)
+    ? planFromPriceId(priceId)
+    : "free";
+
+  return {
+    priceId,
+    plan,
+  };
+}
+
 async function findPriceIdFromCheckoutSession(sessionId) {
   const fullSession = await stripe.checkout.sessions.retrieve(sessionId, {
     expand: ["line_items.data.price"],
@@ -57,12 +78,7 @@ export async function POST(req) {
       }
 
       const plan = planFromPriceId(priceId);
-      const update = {
-        customerId,
-        priceId,
-        plan,
-        hasAccess: plan !== "free",
-      };
+      const update = updateFromPlan(plan, { customerId, priceId });
 
       if (clientReferenceId) {
         await User.findByIdAndUpdate(clientReferenceId, update, { new: true });
@@ -80,22 +96,33 @@ export async function POST(req) {
 
       await User.findOneAndUpdate(
         { customerId },
-        {
-          hasAccess: plan !== "free",
-          plan,
+        updateFromPlan(plan, {
           ...(priceId ? { priceId } : {}),
-        }
+        })
       );
       break;
     }
 
-    case "invoice.payment_failed":
-    case "customer.subscription.deleted": {
-      const customerId = event.data.object.customer;
+    case "customer.subscription.updated": {
+      const subscription = event.data.object;
+      const customerId = subscription.customer;
+      const { priceId, plan } = planFromSubscription(subscription);
+
       await User.findOneAndUpdate(
         { customerId },
-        { hasAccess: false, plan: "free" }
+        updateFromPlan(plan, { ...(priceId ? { priceId } : {}) })
       );
+      break;
+    }
+
+    case "invoice.payment_failed": {
+      // Stripe can recover failed charges via retries, so don't revoke access yet.
+      break;
+    }
+
+    case "customer.subscription.deleted": {
+      const customerId = event.data.object.customer;
+      await User.findOneAndUpdate({ customerId }, updateFromPlan("free"));
       break;
     }
 

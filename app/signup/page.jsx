@@ -1,9 +1,19 @@
-"use client";
+﻿"use client";
 
+import { Suspense } from "react";
+import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 
 export default function SignupPage() {
+    return (
+        <Suspense fallback={null}>
+            <SignupContent />
+        </Suspense>
+    );
+}
+
+function SignupContent() {
     const searchParams = useSearchParams();
     const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
 
@@ -264,23 +274,23 @@ export default function SignupPage() {
             <div className="card">
 
                 {/* Logo */}
-                <a href="/" className="logo-row">
+                <Link href="/" className="logo-row">
                     <div className="logo-icon">P</div>
                     <span className="logo-text">POD Tracker <span>Pro</span></span>
-                </a>
+                </Link>
 
                 {/* Free plan badge */}
                 <div style={{ display: "flex", justifyContent: "center" }}>
                     <div className="plan-badge">
                         <div className="plan-dot" />
-                        Free plan — no credit card required
+                        Free plan â€” no credit card required
                     </div>
                 </div>
 
                 {/* Heading */}
                 <h1 className="heading">Create your account</h1>
                 <p className="subheading">
-                    Start tracking your POD business across Amazon Merch, Redbubble, Etsy, and Spring — for free.
+                    Start tracking your POD business across Amazon Merch, Redbubble, Etsy, and Spring â€” for free.
                 </p>
 
                 <div className="divider" />
@@ -326,3 +336,5 @@ export default function SignupPage() {
         </main>
     );
 }
+
+

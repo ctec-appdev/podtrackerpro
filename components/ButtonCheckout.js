@@ -4,11 +4,30 @@ import { useState } from "react";
 import apiClient from "@/libs/api";
 import config from "@/config";
 
+function normalizeCheckoutPlan(plan) {
+  if (!plan) {
+    return null;
+  }
+
+  const normalized = String(plan).toLowerCase();
+
+  if (normalized === "start") {
+    return "starter";
+  }
+
+  if (normalized === "starter" || normalized === "business") {
+    return normalized;
+  }
+
+  return plan;
+}
+
 const ButtonCheckout = ({ plan, label }) => {
   const [isLoading, setIsLoading] = useState(false);
+  const normalizedPlan = normalizeCheckoutPlan(plan);
 
   const handlePayment = async () => {
-    if (!plan) {
+    if (!normalizedPlan) {
       return;
     }
 
@@ -16,7 +35,7 @@ const ButtonCheckout = ({ plan, label }) => {
 
     try {
       const res = await apiClient.post("/stripe/create-checkout", {
-        plan,
+        plan: normalizedPlan,
         mode: "subscription",
       });
 
@@ -32,7 +51,7 @@ const ButtonCheckout = ({ plan, label }) => {
     <button
       className="btn btn-primary btn-block group"
       onClick={() => handlePayment()}
-      disabled={isLoading || !plan}
+      disabled={isLoading || !normalizedPlan}
     >
       {isLoading ? (
         <span className="loading loading-spinner loading-xs"></span>

@@ -2,6 +2,15 @@
 
 import Image from "next/image";
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import Button from "@mui/material/Button";
+import Paper from "@mui/material/Paper";
+import TableBody from "@mui/material/TableBody";
+import TableCell from "@mui/material/TableCell";
+import TableContainer from "@mui/material/TableContainer";
+import TableHead from "@mui/material/TableHead";
+import TableRow from "@mui/material/TableRow";
+import MuiTable from "@mui/material/Table";
+import Tooltip from "@mui/material/Tooltip";
 import { useSession } from "next-auth/react";
 import CannyFeedback from "@/components/CannyFeedback";
 import apiClient from "@/libs/api";
@@ -611,39 +620,70 @@ function StatCard({ label, value, sub, color = C.accent }) {
 }
 
 function Btn({ children, onClick, variant = "primary", disabled, style: s }) {
-  const base = {
-    padding: "8px 16px",
-    borderRadius: 6,
-    border: "none",
-    cursor: disabled ? "not-allowed" : "pointer",
-    fontFamily: font,
-    fontSize: 15,
-    fontWeight: 600,
-    letterSpacing: "0.3px",
-    transition: "all 0.15s",
-    opacity: disabled ? 0.5 : 1,
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    ...s,
+  const variantMap = {
+    primary: "contained",
+    ghost: "outlined",
+    danger: "contained",
+    success: "contained",
   };
 
-  const variants = {
-    primary: { background: C.accent, color: C.white },
-    ghost: { background: "transparent", color: C.textDim, border: `1px solid ${C.border}` },
-    danger: { background: C.dangerDim, color: C.danger },
-    success: { background: C.successDim, color: C.success },
+  const colorStyles = {
+    primary: {
+      backgroundColor: C.accent,
+      color: C.white,
+      "&:hover": { backgroundColor: "#2563eb" },
+    },
+    ghost: {
+      borderColor: C.border,
+      color: C.textDim,
+      backgroundColor: "transparent",
+      "&:hover": {
+        borderColor: C.borderLight,
+        backgroundColor: C.surfaceHover,
+      },
+    },
+    danger: {
+      backgroundColor: C.dangerDim,
+      color: C.danger,
+      "&:hover": { backgroundColor: "#991b1b" },
+    },
+    success: {
+      backgroundColor: C.successDim,
+      color: C.success,
+      "&:hover": { backgroundColor: "#065f46" },
+    },
   };
 
   return (
-    <button style={{ ...base, ...variants[variant] }} onClick={onClick} disabled={disabled}>
+    <Button
+      disableElevation
+      variant={variantMap[variant] || "contained"}
+      onClick={onClick}
+      disabled={disabled}
+      sx={{
+        textTransform: "none",
+        borderRadius: "6px",
+        px: 2,
+        py: 1,
+        minWidth: "auto",
+        fontFamily: font,
+        fontSize: 15,
+        fontWeight: 600,
+        letterSpacing: "0.3px",
+        lineHeight: 1.2,
+        boxShadow: "none",
+        ...colorStyles[variant],
+        ...s,
+      }}
+    >
       {children}
-    </button>
+    </Button>
   );
 }
 
 // Disabled button with upgrade tooltip for locked features
-function LockedBtn({ children, tooltip = "Upgrade to Starter or Business to unlock AI features.", style: s }) {
+// eslint-disable-next-line no-unused-vars
+function LockedBtnLegacy({ children, tooltip = "Upgrade to Starter or Business to unlock AI features.", style: s }) {
   const [hovered, setHovered] = useState(false);
   return (
     <div style={{ position: "relative", display: "inline-block" }}>
@@ -708,6 +748,50 @@ function LockedBtn({ children, tooltip = "Upgrade to Starter or Business to unlo
         </div>
       )}
     </div>
+  );
+}
+
+function LockedBtn({ children, tooltip = "Upgrade to Starter or Business to unlock AI features.", style: s }) {
+  return (
+    <Tooltip
+      title={tooltip}
+      arrow
+      slotProps={{
+        tooltip: {
+          sx: {
+            backgroundColor: C.card,
+            border: `1px solid ${C.accentDim}`,
+            color: C.accent,
+            fontFamily: font,
+            fontSize: 13,
+          },
+        },
+      }}
+    >
+      <span>
+        <Button
+          disabled
+          variant="outlined"
+          sx={{
+            textTransform: "none",
+            borderRadius: "6px",
+            borderColor: C.border,
+            color: C.textMuted,
+            opacity: 0.6,
+            fontFamily: font,
+            fontSize: 15,
+            fontWeight: 600,
+            letterSpacing: "0.3px",
+            minWidth: "auto",
+            px: 2,
+            py: 1,
+            ...s,
+          }}
+        >
+          Locked {children}
+        </Button>
+      </span>
+    </Tooltip>
   );
 }
 
@@ -842,7 +926,8 @@ function ListingImagePreview({ src, alt = "Listing image" }) {
   );
 }
 
-function Table({ columns, data, onDelete, onUpdate, exampleRow, onCreateExample }) {
+// eslint-disable-next-line no-unused-vars
+function TableLegacy({ columns, data, onDelete, onUpdate, exampleRow, onCreateExample }) {
   const [editingIndex, setEditingIndex] = useState(null);
   const [draftRow, setDraftRow] = useState({});
   const showExample = !data.length && !!exampleRow;
@@ -1051,6 +1136,227 @@ function Table({ columns, data, onDelete, onUpdate, exampleRow, onCreateExample 
         </tbody>
       </table>
     </div>
+    </div>
+  );
+}
+
+function Table({ columns, data, onDelete, onUpdate, exampleRow, onCreateExample }) {
+  const [editingIndex, setEditingIndex] = useState(null);
+  const [draftRow, setDraftRow] = useState({});
+  const showExample = !data.length && !!exampleRow;
+  const displayRows = showExample ? [exampleRow] : data;
+  const hasActions = showExample ? !!onCreateExample : !!(onUpdate || onDelete);
+
+  const startEdit = (index, row) => {
+    setEditingIndex(index);
+    setDraftRow(Object.fromEntries(columns.map((column) => [column.key, row?.[column.key] ?? ""])));
+  };
+
+  const cancelEdit = () => {
+    setEditingIndex(null);
+    setDraftRow({});
+  };
+
+  const saveEdit = async (index, row) => {
+    if (showExample && onCreateExample) {
+      await onCreateExample({ ...row, ...draftRow });
+      cancelEdit();
+      return;
+    }
+
+    if (!onUpdate) {
+      cancelEdit();
+      return;
+    }
+
+    await onUpdate(index, { ...row, ...draftRow });
+    cancelEdit();
+  };
+
+  if (!displayRows.length) {
+    return (
+      <div
+        style={{
+          padding: 40,
+          textAlign: "center",
+          color: C.textMuted,
+          fontFamily: font,
+          fontSize: 19,
+        }}
+      >
+        No data yet. Add your first entry above.
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {showExample && (
+        <div
+          style={{
+            marginBottom: 10,
+            color: C.textMuted,
+            fontSize: 14,
+            fontFamily: font,
+            textTransform: "uppercase",
+            letterSpacing: 0.6,
+          }}
+        >
+          Edit and save this example to create your first entry.
+        </div>
+      )}
+      <TableContainer
+        component={Paper}
+        sx={{
+          backgroundColor: C.card,
+          border: `1px solid ${C.border}`,
+          borderRadius: "8px",
+          overflowX: "auto",
+          boxShadow: "none",
+        }}
+      >
+        <MuiTable size="small" sx={{ minWidth: 720 }}>
+          <TableHead>
+            <TableRow sx={{ backgroundColor: C.surface }}>
+              {columns.map((c) => (
+                <TableCell
+                  key={c.key}
+                  sx={{
+                    color: C.textMuted,
+                    fontFamily: font,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                    borderBottom: `1px solid ${C.border}`,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {c.label}
+                </TableCell>
+              ))}
+              {hasActions && (
+                <TableCell
+                  sx={{
+                    width: 150,
+                    borderBottom: `1px solid ${C.border}`,
+                    backgroundColor: C.surface,
+                  }}
+                />
+              )}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {displayRows.map((row, i) => (
+              <TableRow
+                key={i}
+                sx={{
+                  backgroundColor: i % 2 === 0 ? C.card : "transparent",
+                  opacity: showExample ? 0.92 : 1,
+                  "& td": { borderBottom: `1px solid ${C.border}` },
+                }}
+              >
+                {columns.map((c) => (
+                  <TableCell
+                    key={c.key}
+                    sx={{
+                      color: C.text,
+                      fontFamily: font,
+                      fontSize: 15,
+                      maxWidth: c.maxW || 220,
+                      verticalAlign: "top",
+                    }}
+                  >
+                    {editingIndex === i ? (
+                      <Input
+                        value={draftRow[c.key] ?? ""}
+                        onChange={(value) => setDraftRow((prev) => ({ ...prev, [c.key]: value }))}
+                        style={{ minWidth: 120 }}
+                      />
+                    ) : c.render ? (
+                      c.render(row[c.key], row)
+                    ) : (
+                      <div
+                        style={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          maxWidth: c.maxW || 220,
+                        }}
+                      >
+                        {row[c.key]}
+                      </div>
+                    )}
+                  </TableCell>
+                ))}
+                {hasActions && (
+                  <TableCell sx={{ whiteSpace: "nowrap", verticalAlign: "top" }}>
+                    {(showExample ? !!onCreateExample : !!onUpdate) &&
+                      (editingIndex === i ? (
+                        <>
+                          <Button
+                            size="small"
+                            onClick={() => saveEdit(i, row)}
+                            sx={{
+                              mr: 1,
+                              color: C.success,
+                              minWidth: "auto",
+                              fontFamily: font,
+                              textTransform: "none",
+                            }}
+                          >
+                            Save
+                          </Button>
+                          <Button
+                            size="small"
+                            onClick={cancelEdit}
+                            sx={{
+                              mr: 1,
+                              color: C.textMuted,
+                              minWidth: "auto",
+                              fontFamily: font,
+                              textTransform: "none",
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          size="small"
+                          onClick={() => startEdit(i, row)}
+                          sx={{
+                            mr: 1,
+                            color: C.accent,
+                            minWidth: "auto",
+                            fontFamily: font,
+                            textTransform: "none",
+                          }}
+                        >
+                          {showExample ? "Use Example" : "Edit"}
+                        </Button>
+                      ))}
+                    {!showExample && onDelete && (
+                      <Button
+                        size="small"
+                        onClick={() => onDelete(i)}
+                        sx={{
+                          color: C.danger,
+                          minWidth: "auto",
+                          fontFamily: font,
+                          textTransform: "none",
+                        }}
+                      >
+                        Delete
+                      </Button>
+                    )}
+                  </TableCell>
+                )}
+              </TableRow>
+            ))}
+          </TableBody>
+        </MuiTable>
+      </TableContainer>
     </div>
   );
 }

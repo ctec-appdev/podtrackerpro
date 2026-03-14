@@ -70,6 +70,31 @@ const Pricing = () => {
           text-decoration: none;
         }
 
+        .pricing-close {
+          position: absolute;
+          top: 20px;
+          right: 20px;
+          width: 44px;
+          height: 44px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 999px;
+          border: 1px solid rgba(240,244,255,0.12);
+          background: rgba(13, 27, 46, 0.72);
+          color: rgba(240,244,255,0.82);
+          text-decoration: none;
+          font-size: 24px;
+          line-height: 1;
+          transition: transform 0.15s, background 0.2s, border-color 0.2s;
+        }
+
+        .pricing-close:hover {
+          transform: translateY(-1px);
+          background: rgba(41,100,205,0.18);
+          border-color: rgba(41,100,205,0.38);
+        }
+
         .pricing-logo-image {
           width: 240px;
           height: auto;
@@ -341,6 +366,11 @@ const Pricing = () => {
             padding: 36px 20px;
           }
 
+          .pricing-close {
+            top: 16px;
+            right: 16px;
+          }
+
           .pricing-heading {
             font-size: 30px;
           }
@@ -355,6 +385,9 @@ const Pricing = () => {
       <div className="pricing-glow" />
 
       <section className="pricing-shell" id="pricing">
+            <Link href="/dashboard" className="pricing-close" aria-label="Back to dashboard">
+              ×
+            </Link>
             <Link href="/" className="pricing-logo-row">
               <Image
                 src="/podtrackerpro-logo.png"

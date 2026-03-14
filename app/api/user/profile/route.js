@@ -1,29 +1,36 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/libs/auth";
-import connectMongo from "@/libs/mongoose";
-import User from "@/models/User";
+import { requireUserRecord } from "@/libs/authz";
+import { consumeRateLimit, getRequestIdentifier } from "@/libs/security/rate-limit";
+import { assertValidDisplayName } from "@/libs/security/validation";
+import { handleRouteError, HttpError } from "@/libs/security/http";
+import { logSecurityEvent } from "@/libs/security/audit";
 
 export async function POST(req) {
-  const session = await auth();
+  try {
+    const body = await req.json();
+    const { user } = await requireUserRecord("name email");
+    const requester = getRequestIdentifier(req, user.id);
+    const rateLimit = consumeRateLimit({
+      key: `profile:${requester}`,
+      limit: 10,
+      windowMs: 60 * 1000,
+    });
 
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!rateLimit.allowed) {
+      throw new HttpError(429, "Too many profile updates. Please wait a minute.");
+    }
+
+    const name = assertValidDisplayName(body?.name);
+    user.name = name;
+    await user.save();
+
+    logSecurityEvent("profile.updated", { userId: user.id });
+
+    return NextResponse.json(
+      { user: { id: user.id, name: user.name, email: user.email } },
+      { status: 200 }
+    );
+  } catch (error) {
+    return handleRouteError(error, { route: "user/profile" });
   }
-
-  const body = await req.json();
-  const name = typeof body?.name === "string" ? body.name.trim() : "";
-
-  if (!name) {
-    return NextResponse.json({ error: "Name is required" }, { status: 400 });
-  }
-
-  await connectMongo();
-
-  const user = await User.findByIdAndUpdate(
-    session.user.id,
-    { $set: { name: name.slice(0, 80) } },
-    { new: true, select: "id name email" }
-  );
-
-  return NextResponse.json({ user }, { status: 200 });
 }

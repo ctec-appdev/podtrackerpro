@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/libs/auth";
+import { requireSessionUser } from "@/libs/authz";
 import config from "@/config";
 
 // This is a server-side component to ensure the user is logged in.
@@ -8,9 +8,9 @@ import config from "@/config";
 // You can also add custom static UI elements like a Navbar, Sidebar, Footer, etc..
 // See https://shipfa.st/docs/tutorials/private-page
 export default async function LayoutPrivate({ children }) {
-  const session = await auth();
-
-  if (!session) {
+  try {
+    await requireSessionUser();
+  } catch {
     redirect(config.auth.loginUrl);
   }
 

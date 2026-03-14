@@ -4,6 +4,8 @@ import GoogleProvider from "next-auth/providers/google"
 import EmailProvider from "next-auth/providers/email"
 import config from "@/config"
 import connectMongo from "./mongo"
+import { sanitizeCallbackPath } from "./security/urls"
+import { logSecurityEvent } from "./security/audit"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   
@@ -51,16 +53,40 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ...(connectMongo && { adapter: MongoDBAdapter(connectMongo) }),
 
   callbacks: {
+    jwt: async ({ token }) => {
+      return token;
+    },
     session: async ({ session, token }) => {
       if (session?.user && token.sub) {
         session.user.id = token.sub;
       }
       return session;
     },
+    redirect: async ({ url, baseUrl }) => {
+      if (url.startsWith("/")) {
+        return `${baseUrl}${sanitizeCallbackPath(url, config.auth.callbackUrl)}`;
+      }
+
+      try {
+        const parsedUrl = new URL(url);
+
+        if (parsedUrl.origin === baseUrl) {
+          return url;
+        }
+      } catch {
+        logSecurityEvent("auth.invalid_redirect_url", { url });
+      }
+
+      return `${baseUrl}${config.auth.callbackUrl}`;
+    },
   },
   session: {
     strategy: "jwt",
+    maxAge: 60 * 60 * 24 * 30,
+    updateAge: 60 * 60 * 24,
   },
+  trustHost: true,
+  useSecureCookies: process.env.NODE_ENV === "production",
   pages: {
     signIn: "/signin",
   },

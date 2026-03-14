@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
+import { sanitizeCallbackPath } from "@/libs/security/urls";
 
 export default function SignupPage() {
     return (
@@ -16,7 +17,7 @@ export default function SignupPage() {
 
 function SignupContent() {
     const searchParams = useSearchParams();
-    const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
+    const callbackUrl = sanitizeCallbackPath(searchParams.get("callbackUrl"), "/dashboard");
     const [name, setName] = useState("");
     const [nameError, setNameError] = useState("");
 

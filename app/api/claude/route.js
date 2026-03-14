@@ -1,31 +1,34 @@
 import { NextResponse } from "next/server";
+import { requireFeatureAccess } from "@/libs/authz";
+import { FEATURE_RATE_LIMITS } from "@/libs/subscription";
+import { consumeRateLimit, getRequestIdentifier } from "@/libs/security/rate-limit";
+import { handleRouteError, HttpError } from "@/libs/security/http";
+import { validateClaudeRequest } from "@/libs/security/validation";
+import { logSecurityEvent } from "@/libs/security/audit";
 
 const CLAUDE_URL = "https://api.anthropic.com/v1/messages";
-const DEFAULT_MODEL = "claude-sonnet-4-20250514";
-const DEFAULT_MAX_TOKENS = 1000;
 
 export async function POST(req) {
   try {
     const apiKey = process.env.ANTHROPIC_API_KEY;
 
     if (!apiKey) {
-      return NextResponse.json(
-        { error: "ANTHROPIC_API_KEY is missing in environment variables." },
-        { status: 500 }
-      );
+      throw new HttpError(500, "ANTHROPIC_API_KEY is missing in environment variables.");
     }
 
     const body = await req.json();
-    const prompt = body?.prompt;
-    const system = body?.system;
-    const model = body?.model || DEFAULT_MODEL;
-    const max_tokens = body?.max_tokens || DEFAULT_MAX_TOKENS;
+    const payload = validateClaudeRequest(body);
+    const { user } = await requireFeatureAccess(payload.feature, "plan hasAccess");
+    const requester = getRequestIdentifier(req, user.id);
+    const rateConfig = FEATURE_RATE_LIMITS[payload.feature];
+    const rateLimit = consumeRateLimit({
+      key: `claude:${payload.feature}:${requester}`,
+      limit: rateConfig.limit,
+      windowMs: rateConfig.windowMs,
+    });
 
-    if (!prompt || typeof prompt !== "string") {
-      return NextResponse.json(
-        { error: "prompt is required and must be a string." },
-        { status: 400 }
-      );
+    if (!rateLimit.allowed) {
+      throw new HttpError(429, "Too many AI requests. Please wait before trying again.");
     }
 
     const response = await fetch(CLAUDE_URL, {
@@ -36,30 +39,28 @@ export async function POST(req) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model,
-        max_tokens,
-        system,
-        messages: [{ role: "user", content: prompt }],
+        model: payload.model,
+        max_tokens: payload.max_tokens,
+        system: payload.system,
+        messages: [{ role: "user", content: payload.prompt }],
       }),
     });
 
     const data = await response.json();
 
     if (!response.ok) {
-      return NextResponse.json(
-        { error: data?.error?.message || "Claude request failed.", raw: data },
-        { status: response.status }
-      );
+      logSecurityEvent("ai.provider_failure", {
+        feature: payload.feature,
+        status: response.status,
+      });
+      throw new HttpError(response.status, data?.error?.message || "Claude request failed.");
     }
 
     const text =
       data?.content?.map((block) => block?.text || "").join("\n") || "";
 
-    return NextResponse.json({ text, raw: data });
+    return NextResponse.json({ text });
   } catch (error) {
-    return NextResponse.json(
-      { error: error?.message || "Unexpected Claude proxy error." },
-      { status: 500 }
-    );
+    return handleRouteError(error, { route: "claude" });
   }
 }

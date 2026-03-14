@@ -1,15 +1,21 @@
 "use client";
 
 import Image from "next/image";
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Button from "@mui/material/Button";
+import Box from "@mui/material/Box";
+import FormControl from "@mui/material/FormControl";
+import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
+import MuiSelect from "@mui/material/Select";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
+import TableSortLabel from "@mui/material/TableSortLabel";
 import MuiTable from "@mui/material/Table";
+import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import { useSession } from "next-auth/react";
 import CannyFeedback from "@/components/CannyFeedback";
@@ -35,6 +41,16 @@ const STORAGE = {
   seo: "pod-dash-seo",
   inventory: "pod-dash-inventory",
   performance: "pod-dash-perf",
+};
+
+const EMPTY_TRACKER_DATA = {
+  niches: [],
+  keywords: [],
+  trends: [],
+  briefs: [],
+  seo: [],
+  inventory: [],
+  performance: [],
 };
 
 const TABS = [
@@ -237,6 +253,85 @@ async function save(key, data) {
   } catch (e) {
     console.error(e);
   }
+}
+
+async function loadLocalTrackerState() {
+  const entries = await Promise.all(
+    Object.entries(STORAGE).map(async ([key, storageKey]) => [key, await load(storageKey)])
+  );
+
+  return Object.fromEntries(entries);
+}
+
+async function saveLocalTrackerState(tracker) {
+  await Promise.all(
+    Object.entries(STORAGE).map(async ([key, storageKey]) => {
+      await save(storageKey, Array.isArray(tracker?.[key]) ? tracker[key] : []);
+    })
+  );
+}
+
+function normalizeTrackerState(tracker) {
+  return Object.fromEntries(
+    Object.keys(EMPTY_TRACKER_DATA).map((key) => [key, Array.isArray(tracker?.[key]) ? tracker[key] : []])
+  );
+}
+
+function hasAnyTrackerData(tracker) {
+  return Object.values(normalizeTrackerState(tracker)).some((items) => items.length > 0);
+}
+
+async function loadTrackerState() {
+  try {
+    const response = await fetch("/api/user/tracker", { cache: "no-store" });
+    if (!response.ok) throw new Error("Failed to load tracker state");
+
+    const payload = await response.json();
+    const serverTracker = normalizeTrackerState(payload?.tracker);
+
+    if (payload?.exists) {
+      await saveLocalTrackerState(serverTracker);
+      return serverTracker;
+    }
+
+    const localTracker = normalizeTrackerState(await loadLocalTrackerState());
+    if (hasAnyTrackerData(localTracker)) {
+      try {
+        await fetch("/api/user/tracker", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tracker: localTracker }),
+        });
+      } catch (error) {
+        console.error(error);
+      }
+
+      return localTracker;
+    }
+
+    return serverTracker;
+  } catch (error) {
+    console.error(error);
+    return normalizeTrackerState(await loadLocalTrackerState());
+  }
+}
+
+async function saveTrackerState(tracker) {
+  const normalized = normalizeTrackerState(tracker);
+  await saveLocalTrackerState(normalized);
+
+  const response = await fetch("/api/user/tracker", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tracker: normalized }),
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload?.error || "Failed to save tracker state");
+  }
+
+  return normalized;
 }
 
 // ─── CSV IMPORT / EXPORT HELPERS ───────────────
@@ -629,17 +724,22 @@ function Btn({ children, onClick, variant = "primary", disabled, style: s }) {
 
   const colorStyles = {
     primary: {
-      backgroundColor: C.accent,
+      background: "linear-gradient(180deg, #3b82f6 0%, #3b82f6 72%, #1d4ed8 100%)",
+      border: "1px solid #60a5fa",
       color: C.white,
-      "&:hover": { backgroundColor: "#2563eb" },
+      "&:hover": {
+        background: "linear-gradient(180deg, #60a5fa 0%, #3b82f6 68%, #1e40af 100%)",
+        borderColor: "#93c5fd",
+      },
     },
     ghost: {
-      borderColor: C.border,
-      color: C.textDim,
+      borderColor: "#94a3b8",
+      color: "#cbd5e1",
       backgroundColor: "transparent",
       "&:hover": {
-        borderColor: C.borderLight,
+        borderColor: "#cbd5e1",
         backgroundColor: C.surfaceHover,
+        color: C.white,
       },
     },
     danger: {
@@ -672,6 +772,12 @@ function Btn({ children, onClick, variant = "primary", disabled, style: s }) {
         letterSpacing: "0.3px",
         lineHeight: 1.2,
         boxShadow: "none",
+        "&.Mui-disabled": {
+          color: "#94a3b8",
+          borderColor: "#64748b",
+          backgroundColor: "rgba(148, 163, 184, 0.08)",
+          opacity: 0.8,
+        },
         ...colorStyles[variant],
         ...s,
       }}
@@ -775,9 +881,9 @@ function LockedBtn({ children, tooltip = "Upgrade to Starter or Business to unlo
           sx={{
             textTransform: "none",
             borderRadius: "6px",
-            borderColor: C.border,
-            color: C.textMuted,
-            opacity: 0.6,
+            borderColor: "#94a3b8",
+            color: "#cbd5e1",
+            opacity: 0.9,
             fontFamily: font,
             fontSize: 15,
             fontWeight: 600,
@@ -785,6 +891,11 @@ function LockedBtn({ children, tooltip = "Upgrade to Starter or Business to unlo
             minWidth: "auto",
             px: 2,
             py: 1,
+            "&.Mui-disabled": {
+              color: "#94a3b8",
+              borderColor: "#94a3b8",
+              backgroundColor: "rgba(148, 163, 184, 0.08)",
+            },
             ...s,
           }}
         >
@@ -1143,9 +1254,119 @@ function TableLegacy({ columns, data, onDelete, onUpdate, exampleRow, onCreateEx
 function Table({ columns, data, onDelete, onUpdate, exampleRow, onCreateExample }) {
   const [editingIndex, setEditingIndex] = useState(null);
   const [draftRow, setDraftRow] = useState({});
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterValues, setFilterValues] = useState({});
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
   const showExample = !data.length && !!exampleRow;
-  const displayRows = showExample ? [exampleRow] : data;
+  const displayRows = useMemo(() => (showExample ? [exampleRow] : data), [data, exampleRow, showExample]);
   const hasActions = showExample ? !!onCreateExample : !!(onUpdate || onDelete);
+  const hasControls = !showExample && data.length > 0;
+
+  const filterableColumns = useMemo(
+    () => columns.filter((column) => column.filterable || Array.isArray(column.filterOptions)),
+    [columns]
+  );
+
+  const filterOptionsMap = useMemo(() => {
+    return Object.fromEntries(
+      filterableColumns.map((column) => {
+        const options = Array.isArray(column.filterOptions)
+          ? column.filterOptions
+          : Array.from(
+              new Set(
+                (data || [])
+                  .map((row) => row?.[column.key])
+                  .filter((value) => value !== undefined && value !== null && value !== "")
+                  .map((value) => String(value))
+              )
+            );
+
+        return [column.key, options];
+      })
+    );
+  }, [data, filterableColumns]);
+
+  const filteredRows = useMemo(() => {
+    const normalizedSearch = searchQuery.trim().toLowerCase();
+
+    return displayRows.filter((row) => {
+      const matchesSearch =
+        !normalizedSearch ||
+        columns.some((column) => {
+          const rawValue = row?.[column.key];
+          return String(rawValue ?? "").toLowerCase().includes(normalizedSearch);
+        });
+
+      const matchesFilters = filterableColumns.every((column) => {
+        const selected = filterValues[column.key];
+        if (!selected) return true;
+        return String(row?.[column.key] ?? "") === selected;
+      });
+
+      return matchesSearch && matchesFilters;
+    });
+  }, [columns, displayRows, filterValues, filterableColumns, searchQuery]);
+
+  const sortedRows = useMemo(() => {
+    if (!sortConfig.key) return filteredRows;
+
+    const sortColumn = columns.find((column) => column.key === sortConfig.key);
+    if (!sortColumn) return filteredRows;
+
+    const normalizeSortValue = (value) => {
+      if (value === null || value === undefined || value === "") return { type: "empty", value: "" };
+
+      if (typeof value === "number") return { type: "number", value };
+
+      const stringValue = String(value).trim();
+      const numericValue = Number(stringValue);
+      if (!Number.isNaN(numericValue) && stringValue !== "") {
+        return { type: "number", value: numericValue };
+      }
+
+      if (/^\d{4}-\d{2}-\d{2}$/.test(stringValue)) {
+        const timeValue = Date.parse(stringValue);
+        if (!Number.isNaN(timeValue)) {
+          return { type: "date", value: timeValue };
+        }
+      }
+
+      return { type: "string", value: stringValue.toLowerCase() };
+    };
+
+    const rows = [...filteredRows];
+    rows.sort((leftRow, rightRow) => {
+      const left = normalizeSortValue(leftRow?.[sortConfig.key]);
+      const right = normalizeSortValue(rightRow?.[sortConfig.key]);
+
+      if (left.type === "empty" && right.type !== "empty") return 1;
+      if (left.type !== "empty" && right.type === "empty") return -1;
+
+      let comparison = 0;
+      if (left.value < right.value) comparison = -1;
+      if (left.value > right.value) comparison = 1;
+
+      return sortConfig.direction === "asc" ? comparison : -comparison;
+    });
+
+    return rows;
+  }, [columns, filteredRows, sortConfig]);
+
+  const toggleSort = (columnKey) => {
+    setSortConfig((prev) => {
+      if (prev.key === columnKey) {
+        return {
+          key: columnKey,
+          direction: prev.direction === "asc" ? "desc" : "asc",
+        };
+      }
+
+      return {
+        key: columnKey,
+        direction: "asc",
+      };
+    });
+  };
 
   const startEdit = (index, row) => {
     setEditingIndex(index);
@@ -1205,6 +1426,75 @@ function Table({ columns, data, onDelete, onUpdate, exampleRow, onCreateExample 
           Edit and save this example to create your first entry.
         </div>
       )}
+      {hasControls && (
+        <Box
+          sx={{
+            display: "flex",
+            gap: 1.5,
+            flexWrap: "wrap",
+            alignItems: "center",
+            mb: 1.5,
+          }}
+        >
+          <TextField
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search rows"
+            size="small"
+            sx={{
+              minWidth: 240,
+              "& .MuiOutlinedInput-root": {
+                backgroundColor: C.surface,
+                color: C.text,
+                fontFamily: font,
+                "& fieldset": { borderColor: C.border },
+                "&:hover fieldset": { borderColor: C.borderLight },
+                "&.Mui-focused fieldset": { borderColor: "#94a3b8" },
+              },
+              "& input": {
+                fontFamily: font,
+                fontSize: 14,
+              },
+            }}
+          />
+          {filterableColumns.map((column) => (
+            <FormControl
+              key={column.key}
+              size="small"
+              sx={{
+                minWidth: 170,
+                "& .MuiOutlinedInput-root": {
+                  backgroundColor: C.surface,
+                  color: C.text,
+                  fontFamily: font,
+                  "& fieldset": { borderColor: C.border },
+                  "&:hover fieldset": { borderColor: C.borderLight },
+                  "&.Mui-focused fieldset": { borderColor: "#94a3b8" },
+                },
+                "& .MuiSelect-select": {
+                  fontFamily: font,
+                  fontSize: 14,
+                },
+              }}
+            >
+              <MuiSelect
+                displayEmpty
+                value={filterValues[column.key] || ""}
+                onChange={(e) =>
+                  setFilterValues((prev) => ({ ...prev, [column.key]: e.target.value }))
+                }
+              >
+                <MenuItem value="">{`All ${column.label}`}</MenuItem>
+                {(filterOptionsMap[column.key] || []).map((option) => (
+                  <MenuItem key={option} value={option}>
+                    {option}
+                  </MenuItem>
+                ))}
+              </MuiSelect>
+            </FormControl>
+          ))}
+        </Box>
+      )}
       <TableContainer
         component={Paper}
         sx={{
@@ -1230,9 +1520,33 @@ function Table({ columns, data, onDelete, onUpdate, exampleRow, onCreateExample 
                     letterSpacing: "0.5px",
                     borderBottom: `1px solid ${C.border}`,
                     whiteSpace: "nowrap",
+                    minWidth: c.minW,
+                    width: c.width,
                   }}
                 >
-                  {c.label}
+                  {c.sortable !== false ? (
+                    <TableSortLabel
+                      active={sortConfig.key === c.key}
+                      direction={sortConfig.key === c.key ? sortConfig.direction : "asc"}
+                      onClick={() => toggleSort(c.key)}
+                      sx={{
+                        color: `${C.textMuted} !important`,
+                        "& .MuiTableSortLabel-icon": {
+                          color: `${C.textMuted} !important`,
+                        },
+                        "&.Mui-active": {
+                          color: `${C.white} !important`,
+                        },
+                        "&.Mui-active .MuiTableSortLabel-icon": {
+                          color: `${C.white} !important`,
+                        },
+                      }}
+                    >
+                      {c.label}
+                    </TableSortLabel>
+                  ) : (
+                    c.label
+                  )}
                 </TableCell>
               ))}
               {hasActions && (
@@ -1247,7 +1561,7 @@ function Table({ columns, data, onDelete, onUpdate, exampleRow, onCreateExample 
             </TableRow>
           </TableHead>
           <TableBody>
-            {displayRows.map((row, i) => (
+            {sortedRows.map((row, i) => (
               <TableRow
                 key={i}
                 sx={{
@@ -1263,6 +1577,8 @@ function Table({ columns, data, onDelete, onUpdate, exampleRow, onCreateExample 
                       color: C.text,
                       fontFamily: font,
                       fontSize: 15,
+                      minWidth: c.minW,
+                      width: c.width,
                       maxWidth: c.maxW || 220,
                       verticalAlign: "top",
                     }}
@@ -1354,6 +1670,22 @@ function Table({ columns, data, onDelete, onUpdate, exampleRow, onCreateExample 
                 )}
               </TableRow>
             ))}
+            {!sortedRows.length && (
+              <TableRow>
+                <TableCell
+                  colSpan={columns.length + (hasActions ? 1 : 0)}
+                  sx={{
+                    color: C.textMuted,
+                    fontFamily: font,
+                    textAlign: "center",
+                    py: 4,
+                    borderBottom: `1px solid ${C.border}`,
+                  }}
+                >
+                  No matching rows.
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </MuiTable>
       </TableContainer>
@@ -1492,26 +1824,35 @@ function CSVSampleButton({ label, filename, columns, sampleRow }) {
 export default function PODTracker() {
   const { data: session, status } = useSession();
   const [tab, setTab] = useState("dashboard");
-  const [data, setData] = useState({
-    niches: [],
-    keywords: [],
-    trends: [],
-    briefs: [],
-    seo: [],
-    inventory: [],
-    performance: [],
-  });
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [data, setData] = useState(EMPTY_TRACKER_DATA);
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [plan, setPlan] = useState("free");
   const [usage, setUsage] = useState({});
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mediaQuery = window.matchMedia("(max-width: 768px)");
+    const syncSidebarState = (event) => {
+      setIsSidebarCollapsed(event.matches);
+    };
+
+    setIsSidebarCollapsed(mediaQuery.matches);
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", syncSidebarState);
+      return () => mediaQuery.removeEventListener("change", syncSidebarState);
+    }
+
+    mediaQuery.addListener(syncSidebarState);
+    return () => mediaQuery.removeListener(syncSidebarState);
+  }, []);
+
+  useEffect(() => {
     (async () => {
-      const d = {};
-      for (const [k, v] of Object.entries(STORAGE)) {
-        d[k] = await load(v);
-      }
+      const d = await loadTrackerState();
       const p = await loadPlan();
       const u = await loadUsage();
       setData(d);
@@ -1547,8 +1888,12 @@ export default function PODTracker() {
   }, [session?.user?.name, status]);
 
   const update = useCallback(async (key, newData) => {
-    setData((prev) => ({ ...prev, [key]: newData }));
-    await save(STORAGE[key], newData);
+    let nextState;
+    setData((prev) => {
+      nextState = { ...prev, [key]: newData };
+      return nextState;
+    });
+    await saveTrackerState(nextState);
   }, []);
 
   const addItem = useCallback(
@@ -1603,7 +1948,7 @@ export default function PODTracker() {
     <div style={{ background: C.bg, minHeight: "100vh", display: "flex", fontFamily: sansFont, color: C.text }}>
       <nav
         style={{
-          width: 200,
+          width: isSidebarCollapsed ? 72 : 200,
           background: C.surface,
           borderRight: `1px solid ${C.border}`,
           padding: "16px 0",
@@ -1614,34 +1959,84 @@ export default function PODTracker() {
           top: 0,
           height: "100vh",
           overflowY: "auto",
+          transition: "width 0.18s ease",
         }}
       >
         <div
           style={{
-            padding: "12px 16px 16px",
+            padding: isSidebarCollapsed ? "12px 10px 16px" : "12px 16px 16px",
             borderBottom: `1px solid ${C.border}`,
             marginBottom: 8,
           }}
         >
-          <Image
-            src="/podtrackerpro-logo.png"
-            alt="PODTrackerPro"
-            width={168}
-            height={31}
-            unoptimized
-            style={{ width: "100%", maxWidth: 168, height: "auto", display: "block", objectFit: "contain" }}
-          />
+          <div style={{ display: "flex", alignItems: "center", justifyContent: isSidebarCollapsed ? "center" : "space-between", gap: 8 }}>
+            <Image
+              src="/podtrackerpro-logo.png"
+              alt="PODTrackerPro"
+              width={168}
+              height={31}
+              unoptimized
+              style={{
+                width: "100%",
+                maxWidth: isSidebarCollapsed ? 36 : 168,
+                height: "auto",
+                display: "block",
+                objectFit: "contain",
+              }}
+            />
+            {!isSidebarCollapsed && (
+              <button
+                onClick={() => setIsSidebarCollapsed(true)}
+                aria-label="Collapse sidebar"
+                style={{
+                  border: `1px solid ${C.border}`,
+                  background: C.card,
+                  color: C.textDim,
+                  borderRadius: 6,
+                  width: 28,
+                  height: 28,
+                  cursor: "pointer",
+                  fontFamily: font,
+                  flexShrink: 0,
+                }}
+              >
+                ←
+              </button>
+            )}
+          </div>
+          {isSidebarCollapsed && (
+            <button
+              onClick={() => setIsSidebarCollapsed(false)}
+              aria-label="Expand sidebar"
+              style={{
+                border: `1px solid ${C.border}`,
+                background: C.card,
+                color: C.textDim,
+                borderRadius: 6,
+                width: 36,
+                height: 28,
+                cursor: "pointer",
+                fontFamily: font,
+                display: "block",
+                margin: "10px auto 0",
+              }}
+            >
+              →
+            </button>
+          )}
         </div>
 
         {TABS.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
+            title={isSidebarCollapsed ? t.label : undefined}
             style={{
               display: "flex",
               alignItems: "center",
+              justifyContent: isSidebarCollapsed ? "center" : "flex-start",
               gap: 10,
-              padding: "10px 20px",
+              padding: isSidebarCollapsed ? "10px 0" : "10px 20px",
               border: "none",
               cursor: "pointer",
               background: tab === t.id ? C.accentGlow : "transparent",
@@ -1653,7 +2048,8 @@ export default function PODTracker() {
               transition: "all 0.15s",
             }}
           >
-            <span style={{ fontSize: 17, width: 18 }}>{t.icon}</span> {t.label}
+            <span style={{ fontSize: 17, width: 18, textAlign: "center" }}>{t.icon}</span>
+            {!isSidebarCollapsed && t.label}
           </button>
         ))}
 
@@ -1663,11 +2059,13 @@ export default function PODTracker() {
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
+            title={isSidebarCollapsed ? t.label : undefined}
             style={{
               display: "flex",
               alignItems: "center",
+              justifyContent: isSidebarCollapsed ? "center" : "flex-start",
               gap: 10,
-              padding: "10px 20px",
+              padding: isSidebarCollapsed ? "10px 0" : "10px 20px",
               border: "none",
               cursor: "pointer",
               background: tab === t.id ? C.accentGlow : "transparent",
@@ -1679,23 +2077,40 @@ export default function PODTracker() {
               transition: "all 0.15s",
             }}
           >
-            <span style={{ fontSize: 17, width: 18 }}>{t.icon}</span> {t.label}
+            <span style={{ fontSize: 17, width: 18, textAlign: "center" }}>{t.icon}</span>
+            {!isSidebarCollapsed && t.label}
           </button>
         ))}
 
         {/* Plan badge in sidebar */}
         <div
           style={{
-            padding: "10px 16px",
+            padding: isSidebarCollapsed ? "10px 8px" : "10px 16px",
             borderTop: `1px solid ${C.border}`,
             borderBottom: `1px solid ${C.border}`,
             marginBottom: 4,
           }}
         >
-          <div style={{ fontSize: 11, color: C.textMuted, fontFamily: font, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>
-            Current Plan
-          </div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          {isSidebarCollapsed ? (
+            <div
+              title={`Current plan: ${PLAN_LIMITS[plan].name}`}
+              style={{
+                fontSize: 13,
+                color: plan === "business" ? C.warn : plan === "starter" ? C.accent : C.textDim,
+                fontFamily: font,
+                fontWeight: 700,
+                textAlign: "center",
+              }}
+            >
+              {PLAN_LIMITS[plan].name.charAt(0)}
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, color: C.textMuted, fontFamily: font, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>
+              Current Plan
+            </div>
+          )}
+          {!isSidebarCollapsed && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <span
               style={{
                 fontFamily: font,
@@ -1714,18 +2129,20 @@ export default function PODTracker() {
                 Upgrade ↗
               </a>
             )}
-          </div>
+            </div>
+          )}
         </div>
 
         <div
           style={{
-            padding: "12px 20px",
+            padding: isSidebarCollapsed ? "12px 8px" : "12px 20px",
             fontSize: 19,
             color: C.textMuted,
             fontFamily: font,
+            textAlign: isSidebarCollapsed ? "center" : "left",
           }}
         >
-          {data.niches.length} niches · {data.inventory.length} listings
+          {isSidebarCollapsed ? `${data.niches.length}/${data.inventory.length}` : `${data.niches.length} niches · ${data.inventory.length} listings`}
         </div>
       </nav>
 
@@ -2357,6 +2774,7 @@ Return JSON array: [{"subNiche":"...","demand":1-10,"demandReason":"short","comp
           {
             key: "status",
             label: "Status",
+            filterable: true,
             render: (v) => <Badge color={v === "Validated" ? "success" : v === "Paused" ? "danger" : "accent"}>{v}</Badge>,
           },
           { key: "notes", label: "Notes", maxW: 250 },
@@ -2558,11 +2976,12 @@ function KeywordsView({ data, addItem, deleteItem, updateItem, importItems, load
           {
             key: "volume",
             label: "Volume",
+            filterable: true,
             render: (v) => <Badge color={v === "High" ? "success" : v === "Medium" ? "warn" : "danger"}>{v}</Badge>,
           },
-          { key: "competition", label: "Competition" },
-          { key: "platforms", label: "Platforms", maxW: 200 },
-          { key: "status", label: "Status" },
+          { key: "competition", label: "Competition", filterable: true },
+          { key: "platforms", label: "Platforms", maxW: 200, filterable: true },
+          { key: "status", label: "Status", filterable: true },
           { key: "date", label: "Added" },
         ]}
         data={data.keywords}
@@ -2746,13 +3165,14 @@ function TrendsView({ data, addItem, deleteItem, updateItem, importItems, loadin
       <Table
         columns={[
           { key: "trend", label: "Trend" },
-          { key: "source", label: "Source" },
-          { key: "category", label: "Category" },
-          { key: "seasonality", label: "Season" },
+          { key: "source", label: "Source", filterable: true },
+          { key: "category", label: "Category", filterable: true },
+          { key: "seasonality", label: "Season", filterable: true },
           { key: "peakMonths", label: "Peak" },
           {
             key: "score",
             label: "Score",
+            minW: 96,
             render: (v) => <Badge color={v >= 7 ? "success" : v >= 5 ? "warn" : "danger"}>{v + " of 10"}</Badge>,
           },
           { key: "notes", label: "Notes", maxW: 250 },
@@ -2918,10 +3338,11 @@ function BriefsView({ data, addItem, deleteItem, updateItem, loading, setLoading
           { key: "niche", label: "Niche" },
           { key: "slogan", label: "Slogan" },
           { key: "style", label: "Style" },
-          { key: "platform", label: "Platform" },
+          { key: "platform", label: "Platform", filterable: true },
           {
             key: "status",
             label: "Status",
+            filterable: true,
             render: (v) => <Badge color={v === "Ready" ? "success" : v === "Rejected" ? "danger" : "accent"}>{v}</Badge>,
           },
           { key: "concept", label: "Concept", maxW: 300 },
@@ -3133,7 +3554,7 @@ function SEOView({ data, addItem, deleteItem, updateItem, loading, setLoading, p
       <Table
         columns={[
           { key: "designId", label: "Brief" },
-          { key: "platform", label: "Platform" },
+          { key: "platform", label: "Platform", filterable: true },
           { key: "title", label: "Title", maxW: 250 },
           { key: "bullet1", label: "Bullet 1", maxW: 200 },
           { key: "description", label: "Description", maxW: 200 },
@@ -3251,10 +3672,11 @@ function InventoryView({ data, addItem, deleteItem, updateItem, importItems, pla
             label: "Image",
             render: (v, row) => <ListingImagePreview src={v} alt={row.design || row.sku || "Listing image"} />,
           },
-          { key: "platform", label: "Platform" },
+          { key: "platform", label: "Platform", filterable: true },
           {
             key: "status",
             label: "Status",
+            filterable: true,
             render: (v) => <Badge color={v === "Active" ? "success" : v === "Flagged" ? "danger" : "warn"}>{v}</Badge>,
           },
           { key: "sales", label: "Sales" },

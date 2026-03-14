@@ -1959,6 +1959,7 @@ export default function PODTracker() {
           top: 0,
           height: "100vh",
           overflowY: "auto",
+          overflowX: "hidden",
           transition: "width 0.18s ease",
         }}
       >

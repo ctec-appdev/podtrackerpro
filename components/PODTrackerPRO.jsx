@@ -742,7 +742,32 @@ function TextArea({ value, onChange, placeholder, rows = 3, style: s }) {
   );
 }
 
-function Table({ columns, data, onDelete }) {
+function Table({ columns, data, onDelete, onUpdate }) {
+  const [editingIndex, setEditingIndex] = useState(null);
+  const [draftRow, setDraftRow] = useState({});
+
+  const startEdit = (index, row) => {
+    setEditingIndex(index);
+    setDraftRow(
+      Object.fromEntries(columns.map((column) => [column.key, row?.[column.key] ?? ""]))
+    );
+  };
+
+  const cancelEdit = () => {
+    setEditingIndex(null);
+    setDraftRow({});
+  };
+
+  const saveEdit = async (index, row) => {
+    if (!onUpdate) {
+      cancelEdit();
+      return;
+    }
+
+    await onUpdate(index, { ...row, ...draftRow });
+    cancelEdit();
+  };
+
   if (!data.length) {
     return (
       <div
@@ -783,13 +808,13 @@ function Table({ columns, data, onDelete }) {
                 {c.label}
               </th>
             ))}
-            {onDelete && (
+            {(onUpdate || onDelete) && (
               <th
                 style={{
                   padding: "10px 12px",
                   background: C.surface,
                   borderBottom: `1px solid ${C.border}`,
-                  width: 40,
+                  width: 120,
                 }}
               />
             )}
@@ -808,14 +833,74 @@ function Table({ columns, data, onDelete }) {
                     maxWidth: c.maxW || 200,
                     overflow: "hidden",
                     textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
+                    whiteSpace: editingIndex === i ? "normal" : "nowrap",
                   }}
                 >
-                  {c.render ? c.render(row[c.key], row) : row[c.key]}
+                  {editingIndex === i ? (
+                    <Input
+                      value={draftRow[c.key] ?? ""}
+                      onChange={(value) =>
+                        setDraftRow((prev) => ({ ...prev, [c.key]: value }))
+                      }
+                      style={{ minWidth: 120 }}
+                    />
+                  ) : c.render ? (
+                    c.render(row[c.key], row)
+                  ) : (
+                    row[c.key]
+                  )}
                 </td>
               ))}
-              {onDelete && (
+              {(onUpdate || onDelete) && (
                 <td style={{ padding: "8px 12px", borderBottom: `1px solid ${C.border}` }}>
+                  {onUpdate &&
+                    (editingIndex === i ? (
+                      <>
+                        <button
+                          onClick={() => saveEdit(i, row)}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: C.success,
+                            cursor: "pointer",
+                            fontSize: 15,
+                            fontFamily: font,
+                            marginRight: 8,
+                          }}
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={cancelEdit}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: C.textMuted,
+                            cursor: "pointer",
+                            fontSize: 15,
+                            fontFamily: font,
+                            marginRight: 8,
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => startEdit(i, row)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: C.accent,
+                          cursor: "pointer",
+                          fontSize: 15,
+                          fontFamily: font,
+                          marginRight: 8,
+                        }}
+                      >
+                        Edit
+                      </button>
+                    ))}
                   <button
                     onClick={() => onDelete(i)}
                     style={{
@@ -1052,6 +1137,14 @@ export default function PODTracker() {
     [data, update]
   );
 
+  const updateItem = useCallback(
+    async (key, idx, item) => {
+      const next = data[key].map((existing, i) => (i === idx ? item : existing));
+      await update(key, next);
+    },
+    [data, update]
+  );
+
   if (!loaded) {
     return (
       <div
@@ -1205,6 +1298,7 @@ export default function PODTracker() {
             data={data}
             addItem={addItem}
             deleteItem={deleteItem}
+            updateItem={updateItem}
             importItems={importItems}
             loading={loading}
             setLoading={setLoading}
@@ -1218,6 +1312,7 @@ export default function PODTracker() {
             data={data}
             addItem={addItem}
             deleteItem={deleteItem}
+            updateItem={updateItem}
             importItems={importItems}
             loading={loading}
             setLoading={setLoading}
@@ -1231,6 +1326,7 @@ export default function PODTracker() {
             data={data}
             addItem={addItem}
             deleteItem={deleteItem}
+            updateItem={updateItem}
             importItems={importItems}
             loading={loading}
             setLoading={setLoading}
@@ -1240,13 +1336,13 @@ export default function PODTracker() {
           />
         )}
         {tab === "briefs" && (
-          <BriefsView data={data} addItem={addItem} deleteItem={deleteItem} loading={loading} setLoading={setLoading} plan={plan} usage={usage} setUsage={setUsage} />
+          <BriefsView data={data} addItem={addItem} deleteItem={deleteItem} updateItem={updateItem} loading={loading} setLoading={setLoading} plan={plan} usage={usage} setUsage={setUsage} />
         )}
         {tab === "seo" && (
-          <SEOView data={data} addItem={addItem} deleteItem={deleteItem} loading={loading} setLoading={setLoading} plan={plan} usage={usage} setUsage={setUsage} />
+          <SEOView data={data} addItem={addItem} deleteItem={deleteItem} updateItem={updateItem} loading={loading} setLoading={setLoading} plan={plan} usage={usage} setUsage={setUsage} />
         )}
         {tab === "inventory" && (
-          <InventoryView data={data} addItem={addItem} deleteItem={deleteItem} importItems={importItems} plan={plan} />
+          <InventoryView data={data} addItem={addItem} deleteItem={deleteItem} updateItem={updateItem} importItems={importItems} plan={plan} />
         )}
         {tab === "trademark" && <TrademarkView loading={loading} setLoading={setLoading} plan={plan} usage={usage} setUsage={setUsage} />}
         {tab === "research" && <ResearchView data={data} loading={loading} setLoading={setLoading} plan={plan} usage={usage} setUsage={setUsage} />}
@@ -1473,7 +1569,7 @@ function DCEBBar({ label, letter, value, reason }) {
 }
 
 // ─── NICHES VIEW ───────────────────────────────
-function NichesView({ data, addItem, deleteItem, importItems, loading, setLoading, plan, usage, setUsage }) {
+function NichesView({ data, addItem, deleteItem, updateItem, importItems, loading, setLoading, plan, usage, setUsage }) {
   const [niche, setNiche] = useState("");
   const [subNiche, setSubNiche] = useState("");
   const [dcebResult, setDcebResult] = useState(null);
@@ -1484,11 +1580,10 @@ function NichesView({ data, addItem, deleteItem, importItems, loading, setLoadin
   const atNicheCap = plan === "free" && data.niches.length >= limits.maxNiches;
 
   const handleAdd = () => {
-    if (!niche.trim()) return;
     if (atNicheCap) { alert(`Free plan limit: ${limits.maxNiches} niches.`); return; }
     addItem("niches", {
       niche: niche.trim(),
-      subNiche: subNiche.trim() || "General",
+      subNiche: subNiche.trim(),
       demand: "",
       competition: "",
       evergreen: "",
@@ -1830,6 +1925,7 @@ Return JSON array: [{"subNiche":"...","demand":1-10,"demandReason":"short","comp
           { key: "date", label: "Added" },
         ]}
         data={data.niches}
+        onUpdate={(i, item) => updateItem("niches", i, item)}
         onDelete={(i) => deleteItem("niches", i)}
       />
     </div>
@@ -1837,7 +1933,7 @@ Return JSON array: [{"subNiche":"...","demand":1-10,"demandReason":"short","comp
 }
 
 // ─── KEYWORDS VIEW ─────────────────────────────
-function KeywordsView({ data, addItem, deleteItem, importItems, loading, setLoading, plan, usage, setUsage }) {
+function KeywordsView({ data, addItem, deleteItem, updateItem, importItems, loading, setLoading, plan, usage, setUsage }) {
   const [form, setForm] = useState({
     keyword: "",
     niche: "",
@@ -1852,10 +1948,12 @@ function KeywordsView({ data, addItem, deleteItem, importItems, loading, setLoad
   const atKeywordCap = plan === "free" && data.keywords.length >= limits.maxKeywords;
 
   const handleAdd = () => {
-    if (!form.keyword) return;
     if (atKeywordCap) { alert(`Free plan limit: ${limits.maxKeywords} keywords.`); return; }
     addItem("keywords", {
       ...form,
+      keyword: form.keyword.trim(),
+      niche: form.niche.trim(),
+      subNiche: form.subNiche.trim(),
       platforms: Array.isArray(form.platforms) ? form.platforms.join(", ") : form.platforms,
       date: todayISO(),
     });
@@ -2028,6 +2126,7 @@ function KeywordsView({ data, addItem, deleteItem, importItems, loading, setLoad
           { key: "date", label: "Added" },
         ]}
         data={data.keywords}
+        onUpdate={(i, item) => updateItem("keywords", i, item)}
         onDelete={(i) => deleteItem("keywords", i)}
       />
     </div>
@@ -2035,7 +2134,7 @@ function KeywordsView({ data, addItem, deleteItem, importItems, loading, setLoad
 }
 
 // ─── TRENDS VIEW ───────────────────────────────
-function TrendsView({ data, addItem, deleteItem, importItems, loading, setLoading, plan, usage, setUsage }) {
+function TrendsView({ data, addItem, deleteItem, updateItem, importItems, loading, setLoading, plan, usage, setUsage }) {
   const [form, setForm] = useState({
     trend: "",
     source: "",
@@ -2049,8 +2148,7 @@ function TrendsView({ data, addItem, deleteItem, importItems, loading, setLoadin
   const limits = PLAN_LIMITS[plan];
 
   const handleAdd = () => {
-    if (!form.trend) return;
-    addItem("trends", { ...form, date: todayISO() });
+    addItem("trends", { ...form, trend: form.trend.trim(), source: form.source.trim(), category: form.category.trim(), peakMonths: form.peakMonths.trim(), notes: form.notes.trim(), date: todayISO() });
     setForm({
       trend: "",
       source: "",
@@ -2219,6 +2317,7 @@ function TrendsView({ data, addItem, deleteItem, importItems, loading, setLoadin
           { key: "date", label: "Spotted" },
         ]}
         data={data.trends}
+        onUpdate={(i, item) => updateItem("trends", i, item)}
         onDelete={(i) => deleteItem("trends", i)}
       />
     </div>
@@ -2226,7 +2325,7 @@ function TrendsView({ data, addItem, deleteItem, importItems, loading, setLoadin
 }
 
 // ─── DESIGN BRIEFS VIEW ────────────────────────
-function BriefsView({ data, addItem, deleteItem, loading, setLoading, plan, usage, setUsage }) {
+function BriefsView({ data, addItem, deleteItem, updateItem, loading, setLoading, plan, usage, setUsage }) {
   const [form, setForm] = useState({
     niche: "",
     subNiche: "",
@@ -2240,9 +2339,17 @@ function BriefsView({ data, addItem, deleteItem, loading, setLoading, plan, usag
   const limits = PLAN_LIMITS[plan];
 
   const handleAdd = () => {
-    if (!form.concept) return;
     const id = `DB-${String(data.briefs.length + 1).padStart(3, "0")}`;
-    addItem("briefs", { ...form, id, date: todayISO() });
+    addItem("briefs", {
+      ...form,
+      niche: form.niche.trim(),
+      subNiche: form.subNiche.trim(),
+      concept: form.concept.trim(),
+      style: form.style.trim(),
+      slogan: form.slogan.trim(),
+      id,
+      date: todayISO(),
+    });
     setForm({
       niche: "",
       subNiche: "",
@@ -2377,6 +2484,7 @@ function BriefsView({ data, addItem, deleteItem, loading, setLoading, plan, usag
           { key: "date", label: "Created" },
         ]}
         data={data.briefs}
+        onUpdate={(i, item) => updateItem("briefs", i, item)}
         onDelete={(i) => deleteItem("briefs", i)}
       />
     </div>
@@ -2384,7 +2492,7 @@ function BriefsView({ data, addItem, deleteItem, loading, setLoading, plan, usag
 }
 
 // ─── SEO VIEW ──────────────────────────────────
-function SEOView({ data, addItem, deleteItem, loading, setLoading, plan, usage, setUsage }) {
+function SEOView({ data, addItem, deleteItem, updateItem, loading, setLoading, plan, usage, setUsage }) {
   const [designId, setDesignId] = useState("");
   const [platform, setPlatform] = useState("Amazon Merch");
   const [generated, setGenerated] = useState(null);
@@ -2586,6 +2694,7 @@ function SEOView({ data, addItem, deleteItem, loading, setLoading, plan, usage, 
           { key: "date", label: "Created" },
         ]}
         data={data.seo}
+        onUpdate={(i, item) => updateItem("seo", i, item)}
         onDelete={(i) => deleteItem("seo", i)}
       />
     </div>
@@ -2593,7 +2702,7 @@ function SEOView({ data, addItem, deleteItem, loading, setLoading, plan, usage, 
 }
 
 // ─── INVENTORY VIEW ────────────────────────────
-function InventoryView({ data, addItem, deleteItem, importItems, plan }) {
+function InventoryView({ data, addItem, deleteItem, updateItem, importItems, plan }) {
   const [form, setForm] = useState({
     sku: "",
     design: "",
@@ -2607,9 +2716,17 @@ function InventoryView({ data, addItem, deleteItem, importItems, plan }) {
   const atCap = plan === "free" && data.inventory.length >= limits.maxInventory;
 
   const handleAdd = () => {
-    if (!form.sku) return;
     if (atCap) { alert(`Free plan limit: ${limits.maxInventory} inventory items. Upgrade for unlimited.`); return; }
-    addItem("inventory", { ...form, dateListed: todayISO(), sales: 0 });
+    addItem("inventory", {
+      ...form,
+      sku: form.sku.trim(),
+      design: form.design.trim(),
+      briefId: form.briefId.trim(),
+      url: form.url.trim(),
+      notes: form.notes.trim(),
+      dateListed: todayISO(),
+      sales: 0,
+    });
     setForm({
       sku: "",
       design: "",
@@ -2700,6 +2817,7 @@ function InventoryView({ data, addItem, deleteItem, importItems, plan }) {
           { key: "notes", label: "Notes", maxW: 200 },
         ]}
         data={data.inventory}
+        onUpdate={(i, item) => updateItem("inventory", i, item)}
         onDelete={(i) => deleteItem("inventory", i)}
       />
     </div>

@@ -50,10 +50,17 @@ export function getStripePriceIdForPlan(plan) {
   return priceId;
 }
 
+function getConfiguredStripePriceEntries() {
+  return paidPlans.flatMap((plan) => {
+    const envKey = STRIPE_PRICE_ENV_BY_PLAN[plan.key];
+    const priceId = envKey ? process.env[envKey] : null;
+
+    return priceId ? [[priceId, plan.key]] : [];
+  });
+}
+
 export function getStripePriceMap() {
-  return Object.fromEntries(
-    paidPlans.map((plan) => [getStripePriceIdForPlan(plan.key), plan.key])
-  );
+  return Object.fromEntries(getConfiguredStripePriceEntries());
 }
 
 export function normalizePlan(plan, hasAccess = true) {

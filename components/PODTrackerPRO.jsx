@@ -311,6 +311,7 @@ function mapImportedRows(type, rows) {
         briefId: getValue(row, ["briefId", "brief id"]) || "",
         platform: getValue(row, ["platform"]) || "Amazon Merch",
         url: getValue(row, ["url", "listing url"]) || "",
+        imageUrl: getValue(row, ["imageUrl", "image url", "image", "thumbnail", "thumbnail url"]) || "",
         status: getValue(row, ["status"]) || "Active",
         notes: getValue(row, ["notes"]) || "",
         dateListed: getValue(row, ["dateListed", "date listed", "listed"]) || todayISO(),
@@ -739,6 +740,41 @@ function TextArea({ value, onChange, placeholder, rows = 3, style: s }) {
         ...s,
       }}
     />
+  );
+}
+
+function ListingImagePreview({ src, alt = "Listing image" }) {
+  const [hasError, setHasError] = useState(false);
+  const trimmedSrc = String(src || "").trim();
+
+  useEffect(() => {
+    setHasError(false);
+  }, [trimmedSrc]);
+
+  if (!trimmedSrc) {
+    return <span style={{ color: C.textMuted }}>-</span>;
+  }
+
+  if (hasError) {
+    return <span style={{ color: C.textMuted, fontSize: 13 }}>Invalid image</span>;
+  }
+
+  return (
+    <a href={trimmedSrc} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex" }}>
+      <img
+        src={trimmedSrc}
+        alt={alt}
+        onError={() => setHasError(true)}
+        style={{
+          width: 56,
+          height: 56,
+          objectFit: "cover",
+          borderRadius: 8,
+          border: `1px solid ${C.border}`,
+          background: C.surface,
+        }}
+      />
+    </a>
   );
 }
 
@@ -2709,6 +2745,7 @@ function InventoryView({ data, addItem, deleteItem, updateItem, importItems, pla
     briefId: "",
     platform: "Amazon Merch",
     url: "",
+    imageUrl: "",
     status: "Active",
     notes: "",
   });
@@ -2723,6 +2760,7 @@ function InventoryView({ data, addItem, deleteItem, updateItem, importItems, pla
       design: form.design.trim(),
       briefId: form.briefId.trim(),
       url: form.url.trim(),
+      imageUrl: form.imageUrl.trim(),
       notes: form.notes.trim(),
       dateListed: todayISO(),
       sales: 0,
@@ -2733,6 +2771,7 @@ function InventoryView({ data, addItem, deleteItem, updateItem, importItems, pla
       briefId: "",
       platform: "Amazon Merch",
       url: "",
+      imageUrl: "",
       status: "Active",
       notes: "",
     });
@@ -2752,8 +2791,9 @@ function InventoryView({ data, addItem, deleteItem, updateItem, importItems, pla
           <Select value={form.platform} onChange={(v) => setForm((p) => ({ ...p, platform: v }))} options={PLATFORMS} />
           <Select value={form.status} onChange={(v) => setForm((p) => ({ ...p, status: v }))} options={LISTING_STATUS} />
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12, marginBottom: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 2fr 1fr", gap: 12, marginBottom: 12 }}>
           <Input value={form.url} onChange={(v) => setForm((p) => ({ ...p, url: v }))} placeholder="Listing URL" />
+          <Input value={form.imageUrl} onChange={(v) => setForm((p) => ({ ...p, imageUrl: v }))} placeholder="Image URL" />
           <Input value={form.notes} onChange={(v) => setForm((p) => ({ ...p, notes: v }))} placeholder="Notes" />
         </div>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
@@ -2768,18 +2808,19 @@ function InventoryView({ data, addItem, deleteItem, updateItem, importItems, pla
             label="Export CSV"
             filename="podtracker-listings.csv"
             rows={data.inventory}
-            columns={["sku", "design", "briefId", "platform", "url", "status", "notes", "dateListed", "sales"]}
+            columns={["sku", "design", "briefId", "platform", "url", "imageUrl", "status", "notes", "dateListed", "sales"]}
           />
           <CSVSampleButton
             label="Sample CSV"
             filename="podtracker-listings-sample.csv"
-            columns={["sku", "design", "briefId", "platform", "url", "status", "notes", "dateListed", "sales"]}
+            columns={["sku", "design", "briefId", "platform", "url", "imageUrl", "status", "notes", "dateListed", "sales"]}
             sampleRow={{
               sku: "POD-001",
               design: "Bass Legend",
               briefId: "DB-001",
               platform: "Amazon Merch",
               url: "https://example.com/listing",
+              imageUrl: "https://images.example.com/bass-legend.jpg",
               status: "Active",
               notes: "First upload",
               dateListed: "2026-03-08",
@@ -2793,6 +2834,11 @@ function InventoryView({ data, addItem, deleteItem, updateItem, importItems, pla
         columns={[
           { key: "sku", label: "SKU" },
           { key: "design", label: "Design" },
+          {
+            key: "imageUrl",
+            label: "Image",
+            render: (v, row) => <ListingImagePreview src={v} alt={row.design || row.sku || "Listing image"} />,
+          },
           { key: "platform", label: "Platform" },
           {
             key: "status",

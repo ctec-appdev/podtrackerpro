@@ -7,7 +7,7 @@ import CannyFeedback from "@/components/CannyFeedback";
 import apiClient from "@/libs/api";
 
 // ─── CONSTANTS ─────────────────────────────────
-const PLATFORMS = ["Amazon Merch", "Redbubble", "Etsy", "TeeSpring/Spring"];
+const PLATFORMS = ["Amazon Merch", "Redbubble", "Etsy", "TeeSpring/Spring", "TeePublic", "Other"];
 const COMPETITION = ["Low", "Medium", "High", "Very High"];
 const LISTING_STATUS = ["Active", "Paused", "Removed", "Flagged"];
 

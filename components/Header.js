@@ -5,7 +5,6 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import ButtonSignin from "./ButtonSignin";
-import logo from "@/app/icon.png";
 import config from "@/config";
 
 const links = [
@@ -50,15 +49,13 @@ const Header = () => {
             title={`${config.appName} hompage`}
           >
             <Image
-              src={logo}
+              src="/podtrackerpro-logo.png"
               alt={`${config.appName} logo`}
-              className="w-8"
-              placeholder="blur"
+              className="h-auto w-40"
               priority={true}
-              width={32}
-              height={32}
+              width={600}
+              height={110}
             />
-            <span className="font-extrabold text-lg">{config.appName}</span>
           </Link>
         </div>
         {/* Burger button to open menu on mobile */}
@@ -117,15 +114,13 @@ const Header = () => {
               href="/"
             >
               <Image
-                src={logo}
+                src="/podtrackerpro-logo.png"
                 alt={`${config.appName} logo`}
-                className="w-8"
-                placeholder="blur"
+                className="h-auto w-40"
                 priority={true}
-                width={32}
-                height={32}
+                width={600}
+                height={110}
               />
-              <span className="font-extrabold text-lg">{config.appName}</span>
             </Link>
             <button
               type="button"

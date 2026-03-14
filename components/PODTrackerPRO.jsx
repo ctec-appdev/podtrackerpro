@@ -1102,7 +1102,7 @@ export default function PODTracker() {
           }}
         >
           <Image
-            src={LOGO_SRC}
+            src="/podtrackerpro-logo.png"
             alt="PODTrackerPro"
             width={168}
             height={31}

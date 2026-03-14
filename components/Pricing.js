@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import config from "@/config";
 import ButtonCheckout from "@/components/ButtonCheckout";
 
@@ -19,7 +20,7 @@ const Pricing = () => {
       }}
     >
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@300;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Bungee&family=DM+Sans:wght@300;400;500;600;700&display=swap');
 
         .pricing-grid-bg {
           position: fixed;
@@ -65,35 +66,14 @@ const Pricing = () => {
         .pricing-logo-row {
           display: inline-flex;
           align-items: center;
-          gap: 10px;
           margin-bottom: 36px;
           text-decoration: none;
         }
 
-        .pricing-logo-icon {
-          width: 36px;
-          height: 36px;
-          background: #2964CD;
-          border-radius: 9px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-family: 'Syne', sans-serif;
-          font-weight: 800;
-          font-size: 16px;
-          color: #fff;
-          flex-shrink: 0;
-        }
-
-        .pricing-logo-text {
-          font-family: 'Syne', sans-serif;
-          font-weight: 700;
-          font-size: 18px;
-          color: #F0F4FF;
-        }
-
-        .pricing-logo-text span {
-          color: #2964CD;
+        .pricing-logo-image {
+          width: 240px;
+          height: auto;
+          display: block;
         }
 
         .pricing-badge-row {
@@ -130,7 +110,7 @@ const Pricing = () => {
         }
 
         .pricing-heading {
-          font-family: 'Syne', sans-serif;
+          font-family: 'Bungee', sans-serif;
           font-weight: 800;
           font-size: 48px;
           letter-spacing: -1px;
@@ -220,7 +200,7 @@ const Pricing = () => {
         }
 
         .pricing-price {
-          font-family: 'Syne', sans-serif;
+          font-family: 'Bungee', sans-serif;
           font-size: 52px;
           line-height: 0.95;
           font-weight: 800;
@@ -375,12 +355,16 @@ const Pricing = () => {
       <div className="pricing-glow" />
 
       <section className="pricing-shell" id="pricing">
-        <Link href="/" className="pricing-logo-row">
-          <div className="pricing-logo-icon">P</div>
-          <span className="pricing-logo-text">
-            POD Tracker <span>Pro</span>
-          </span>
-        </Link>
+            <Link href="/" className="pricing-logo-row">
+              <Image
+                src="/podtrackerpro-logo.png"
+                alt={`${config.appName} logo`}
+                className="pricing-logo-image"
+                width={600}
+                height={110}
+                priority
+              />
+            </Link>
 
         <div className="pricing-badge-row">
           <div className="pricing-badge">

@@ -2,6 +2,7 @@
 
 import { Suspense, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 
@@ -46,7 +47,7 @@ function SignupContent() {
 
             {/* Google Fonts */}
             <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@300;400;500;600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Bungee&family=DM+Sans:wght@300;400;500;600&display=swap');
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -97,37 +98,18 @@ function SignupContent() {
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 10px;
           margin-bottom: 36px;
           text-decoration: none;
         }
 
-        .logo-icon {
-          width: 36px;
-          height: 36px;
-          background: #2964CD;
-          border-radius: 9px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-family: 'Syne', sans-serif;
-          font-weight: 800;
-          font-size: 16px;
-          color: #fff;
-          flex-shrink: 0;
+        .logo-image {
+          width: 240px;
+          height: auto;
+          display: block;
         }
-
-        .logo-text {
-          font-family: 'Syne', sans-serif;
-          font-weight: 700;
-          font-size: 18px;
-          color: #F0F4FF;
-        }
-
-        .logo-text span { color: #2964CD; }
 
         .heading {
-          font-family: 'Syne', sans-serif;
+          font-family: 'Bungee', sans-serif;
           font-weight: 800;
           font-size: 28px;
           letter-spacing: -1px;
@@ -337,10 +319,16 @@ function SignupContent() {
             <div className="card">
 
                 {/* Logo */}
-                <Link href="/" className="logo-row">
-                    <div className="logo-icon">P</div>
-                    <span className="logo-text">POD Tracker <span>Pro</span></span>
-                </Link>
+                    <Link href="/" className="logo-row">
+                        <Image
+                            src="/podtrackerpro-logo.png"
+                            alt="PODTrackerPro logo"
+                            className="logo-image"
+                            width={600}
+                            height={110}
+                            priority
+                        />
+                    </Link>
 
                 {/* Free plan badge */}
                 <div style={{ display: "flex", justifyContent: "center" }}>

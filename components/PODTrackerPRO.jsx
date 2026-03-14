@@ -842,7 +842,7 @@ function ListingImagePreview({ src, alt = "Listing image" }) {
   );
 }
 
-function Table({ columns, data, onDelete, onUpdate, exampleRow }) {
+function Table({ columns, data, onDelete, onUpdate, exampleRow, onCreateExample }) {
   const [editingIndex, setEditingIndex] = useState(null);
   const [draftRow, setDraftRow] = useState({});
   const showExample = !data.length && !!exampleRow;
@@ -861,6 +861,12 @@ function Table({ columns, data, onDelete, onUpdate, exampleRow }) {
   };
 
   const saveEdit = async (index, row) => {
+    if (showExample && onCreateExample) {
+      await onCreateExample({ ...row, ...draftRow });
+      cancelEdit();
+      return;
+    }
+
     if (!onUpdate) {
       cancelEdit();
       return;
@@ -899,7 +905,7 @@ function Table({ columns, data, onDelete, onUpdate, exampleRow }) {
             letterSpacing: 0.6,
           }}
         >
-          Example preview. Your saved entries will appear like this.
+          Edit and save this example to create your first entry.
         </div>
       )}
       <div style={{ overflowX: "auto", borderRadius: 8, border: `1px solid ${C.border}` }}>
@@ -925,7 +931,7 @@ function Table({ columns, data, onDelete, onUpdate, exampleRow }) {
                 {c.label}
               </th>
             ))}
-            {!showExample && (onUpdate || onDelete) && (
+            {(showExample ? !!onCreateExample : (onUpdate || onDelete)) && (
               <th
                 style={{
                   padding: "10px 12px",
@@ -959,7 +965,7 @@ function Table({ columns, data, onDelete, onUpdate, exampleRow }) {
                     whiteSpace: editingIndex === i ? "normal" : "nowrap",
                   }}
                 >
-                  {editingIndex === i && !showExample ? (
+                  {editingIndex === i ? (
                     <Input
                       value={draftRow[c.key] ?? ""}
                       onChange={(value) =>
@@ -974,9 +980,9 @@ function Table({ columns, data, onDelete, onUpdate, exampleRow }) {
                   )}
                 </td>
               ))}
-              {!showExample && (onUpdate || onDelete) && (
+              {(showExample ? !!onCreateExample : (onUpdate || onDelete)) && (
                 <td style={{ padding: "8px 12px", borderBottom: `1px solid ${C.border}` }}>
-                  {onUpdate &&
+                  {(showExample ? !!onCreateExample : !!onUpdate) &&
                     (editingIndex === i ? (
                       <>
                         <button
@@ -1021,9 +1027,10 @@ function Table({ columns, data, onDelete, onUpdate, exampleRow }) {
                           marginRight: 8,
                         }}
                       >
-                        Edit
+                        {showExample ? "Use Example" : "Edit"}
                       </button>
                     ))}
+                  {!showExample && onDelete && (
                   <button
                     onClick={() => onDelete(i)}
                     style={{
@@ -1036,6 +1043,7 @@ function Table({ columns, data, onDelete, onUpdate, exampleRow }) {
                   >
                     ✕
                   </button>
+                  )}
                 </td>
               )}
             </tr>
@@ -2050,6 +2058,7 @@ Return JSON array: [{"subNiche":"...","demand":1-10,"demandReason":"short","comp
         ]}
         data={data.niches}
         exampleRow={EXAMPLE_ROWS.niches}
+        onCreateExample={(item) => addItem("niches", item)}
         onUpdate={(i, item) => updateItem("niches", i, item)}
         onDelete={(i) => deleteItem("niches", i)}
       />
@@ -2252,6 +2261,7 @@ function KeywordsView({ data, addItem, deleteItem, updateItem, importItems, load
         ]}
         data={data.keywords}
         exampleRow={EXAMPLE_ROWS.keywords}
+        onCreateExample={(item) => addItem("keywords", item)}
         onUpdate={(i, item) => updateItem("keywords", i, item)}
         onDelete={(i) => deleteItem("keywords", i)}
       />
@@ -2444,6 +2454,7 @@ function TrendsView({ data, addItem, deleteItem, updateItem, importItems, loadin
         ]}
         data={data.trends}
         exampleRow={EXAMPLE_ROWS.trends}
+        onCreateExample={(item) => addItem("trends", item)}
         onUpdate={(i, item) => updateItem("trends", i, item)}
         onDelete={(i) => deleteItem("trends", i)}
       />
@@ -2612,6 +2623,7 @@ function BriefsView({ data, addItem, deleteItem, updateItem, loading, setLoading
         ]}
         data={data.briefs}
         exampleRow={EXAMPLE_ROWS.briefs}
+        onCreateExample={(item) => addItem("briefs", item)}
         onUpdate={(i, item) => updateItem("briefs", i, item)}
         onDelete={(i) => deleteItem("briefs", i)}
       />
@@ -2823,6 +2835,7 @@ function SEOView({ data, addItem, deleteItem, updateItem, loading, setLoading, p
         ]}
         data={data.seo}
         exampleRow={EXAMPLE_ROWS.seo}
+        onCreateExample={(item) => addItem("seo", item)}
         onUpdate={(i, item) => updateItem("seo", i, item)}
         onDelete={(i) => deleteItem("seo", i)}
       />
@@ -2957,6 +2970,7 @@ function InventoryView({ data, addItem, deleteItem, updateItem, importItems, pla
         ]}
         data={data.inventory}
         exampleRow={EXAMPLE_ROWS.inventory}
+        onCreateExample={(item) => addItem("inventory", item)}
         onUpdate={(i, item) => updateItem("inventory", i, item)}
         onDelete={(i) => deleteItem("inventory", i)}
       />

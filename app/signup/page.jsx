@@ -48,7 +48,7 @@ function SignupContent() {
 
             {/* Google Fonts */}
             <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Bungee&family=DM+Sans:wght@300;400;500;600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Rubik:wght@700&display=swap');
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -110,7 +110,7 @@ function SignupContent() {
         }
 
         .heading {
-          font-family: 'Bungee', sans-serif;
+          font-family: 'Rubik', sans-serif;
           font-weight: 800;
           font-size: 28px;
           letter-spacing: -1px;

@@ -22,12 +22,12 @@ function normalizeCheckoutPlan(plan) {
   return plan;
 }
 
-const ButtonCheckout = ({ plan, label }) => {
+const ButtonCheckout = ({ plan, label, disabled = false }) => {
   const [isLoading, setIsLoading] = useState(false);
   const normalizedPlan = normalizeCheckoutPlan(plan);
 
   const handlePayment = async () => {
-    if (!normalizedPlan) {
+    if (!normalizedPlan || disabled) {
       return;
     }
 
@@ -51,7 +51,7 @@ const ButtonCheckout = ({ plan, label }) => {
     <button
       className="btn btn-primary btn-block group"
       onClick={() => handlePayment()}
-      disabled={isLoading || !normalizedPlan}
+      disabled={disabled || isLoading || !normalizedPlan}
     >
       {isLoading ? (
         <span className="loading loading-spinner loading-xs"></span>

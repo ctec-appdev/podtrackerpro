@@ -20,7 +20,7 @@ const Pricing = () => {
       }}
     >
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Bungee&family=DM+Sans:wght@300;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Rubik:wght@700&display=swap');
 
         .pricing-grid-bg {
           position: fixed;
@@ -135,7 +135,7 @@ const Pricing = () => {
         }
 
         .pricing-heading {
-          font-family: 'Bungee', sans-serif;
+          font-family: 'Rubik', sans-serif;
           font-weight: 800;
           font-size: 48px;
           letter-spacing: -1px;
@@ -225,7 +225,7 @@ const Pricing = () => {
         }
 
         .pricing-price {
-          font-family: 'Bungee', sans-serif;
+          font-family: 'Rubik', sans-serif;
           font-size: 52px;
           line-height: 0.95;
           font-weight: 800;
@@ -463,7 +463,8 @@ const Pricing = () => {
                 ) : (
                   <ButtonCheckout
                     plan={plan.key}
-                    label={plan.name === "Starter" ? "Choose Starter" : "Choose Business"}
+                    label="Coming Soon"
+                    disabled
                   />
                 )}
 

@@ -116,8 +116,6 @@ export function assertAllowedCheckoutPlan(plan) {
 }
 
 export function assertAllowedCheckoutSelection({ plan, priceId }) {
-  const priceMap = getStripePriceMap();
-
   if (plan) {
     const checkoutPlan = assertAllowedCheckoutPlan(plan);
 
@@ -127,6 +125,8 @@ export function assertAllowedCheckoutSelection({ plan, priceId }) {
 
     return checkoutPlan;
   }
+
+  const priceMap = getStripePriceMap();
 
   if (!priceId || !priceMap[priceId]) {
     throw new HttpError(400, "Unknown Stripe price.");

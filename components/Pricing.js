@@ -1,5 +1,6 @@
 import Link from "next/link";
 import config from "@/config";
+import ButtonCheckout from "@/components/ButtonCheckout";
 
 const Pricing = () => {
   return (
@@ -443,9 +444,10 @@ const Pricing = () => {
                     Get started free
                   </Link>
                 ) : (
-                  <a href={plan.checkoutUrl} className="btn btn-block">
-                    {plan.name === "Starter" ? "Choose Starter" : "Choose Business"}
-                  </a>
+                  <ButtonCheckout
+                    plan={plan.key}
+                    label={plan.name === "Starter" ? "Choose Starter" : "Choose Business"}
+                  />
                 )}
 
                 <p className="pricing-billing">

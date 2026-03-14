@@ -1,23 +1,22 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/libs/auth";
-import connectMongo from "@/libs/mongoose";
-import User from "@/models/User";
+import { requireUserRecord, getUserSubscription } from "@/libs/authz";
+import { handleRouteError } from "@/libs/security/http";
 
 export async function GET() {
-  const session = await auth();
+  try {
+    const { user } = await requireUserRecord(
+      "plan hasAccess customerId stripeCustomerId stripeSubscriptionId priceId stripePriceId subscriptionStatus"
+    );
+    const subscription = getUserSubscription(user);
+    return NextResponse.json(
+      { plan: subscription.plan, status: subscription.status },
+      { status: 200 }
+    );
+  } catch (error) {
+    if (error?.status === 401 || error?.status === 404) {
+      return NextResponse.json({ plan: "free" }, { status: 200 });
+    }
 
-  if (!session?.user?.id) {
-    return NextResponse.json({ plan: "free" }, { status: 200 });
+    return handleRouteError(error, { route: "user/plan" });
   }
-
-  await connectMongo();
-
-  const user = await User.findById(session.user.id).select("plan hasAccess");
-
-  if (!user || !user.hasAccess) {
-    return NextResponse.json({ plan: "free" }, { status: 200 });
-  }
-
-  const plan = user.plan === "starter" || user.plan === "business" ? user.plan : "free";
-  return NextResponse.json({ plan }, { status: 200 });
 }

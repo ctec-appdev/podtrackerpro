@@ -21,8 +21,23 @@ const userSchema = mongoose.Schema(
       type: String,
       index: true,
     },
+    stripeCustomerId: {
+      type: String,
+      index: true,
+    },
+    stripeSubscriptionId: {
+      type: String,
+      index: true,
+    },
     priceId: {
       type: String,
+    },
+    stripePriceId: {
+      type: String,
+    },
+    subscriptionStatus: {
+      type: String,
+      default: "inactive",
     },
     hasAccess: {
       type: Boolean,

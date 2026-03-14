@@ -1,65 +1,99 @@
 import Stripe from "stripe";
 
-// This is used to create a Stripe Checkout for one-time payments. It's usually triggered with the <ButtonCheckout /> component. Webhooks are used to update the user's state in the database.
-export const createCheckout = async ({
-  priceId,
-  mode,
-  successUrl,
-  cancelUrl,
-  couponId,
-  clientReferenceId,
-  user,
-}) => {
-  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+let stripeClient;
 
-  const extraParams = {};
+function getRequiredEnv(name) {
+  const value = process.env[name];
 
-  if (user?.customerId) {
-    extraParams.customer = user.customerId;
-  } else {
-    if (mode === "payment") {
-      extraParams.customer_creation = "always";
-      // The option below costs 0.4% (up to $2) per invoice. Alternatively, you can use https://zenvoice.io/ to create unlimited invoices automatically.
-      // extraParams.invoice_creation = { enabled: true };
-      extraParams.payment_intent_data = { setup_future_usage: "on_session" };
-    }
-    if (user?.email) {
-      extraParams.customer_email = user.email;
-    }
-    extraParams.tax_id_collection = { enabled: true };
+  if (!value) {
+    throw new Error(`Missing required Stripe environment variable: ${name}`);
   }
 
-  const stripeSession = await stripe.checkout.sessions.create({
-    mode,
+  return value;
+}
+
+export function getStripe() {
+  if (!stripeClient) {
+    stripeClient = new Stripe(getRequiredEnv("STRIPE_SECRET_KEY"), {
+      apiVersion: "2026-02-25.clover",
+    });
+  }
+
+  return stripeClient;
+}
+
+export async function ensureStripeCustomer({ user }) {
+  const existingCustomerId = user?.stripeCustomerId || user?.customerId || null;
+
+  if (existingCustomerId) {
+    return existingCustomerId;
+  }
+
+  // Creating the customer server-side lets us store the Stripe customer id
+  // before Checkout starts, which makes webhook reconciliation more reliable.
+  const customer = await getStripe().customers.create({
+    email: user?.email || undefined,
+    name: user?.name || undefined,
+    metadata: {
+      userId: user?._id?.toString() || "",
+      app: "PODTrackerPro",
+    },
+  });
+
+  user.stripeCustomerId = customer.id;
+  user.customerId = customer.id;
+  await user.save();
+
+  return customer.id;
+}
+
+// Creates a Stripe-hosted Checkout Session for subscription billing.
+export async function createCheckoutSession({
+  customerId,
+  customerEmail,
+  priceId,
+  plan,
+  successUrl,
+  cancelUrl,
+  clientReferenceId,
+  userEmail,
+}) {
+  return getStripe().checkout.sessions.create({
+    mode: "subscription",
     allow_promotion_codes: true,
+    customer: customerId || undefined,
+    customer_email: customerId ? undefined : customerEmail || undefined,
     client_reference_id: clientReferenceId,
+    metadata: {
+      userId: clientReferenceId,
+      email: userEmail || "",
+      selectedPlan: plan,
+      priceId,
+    },
+    subscription_data: {
+      metadata: {
+        userId: clientReferenceId,
+        email: userEmail || "",
+        selectedPlan: plan,
+        priceId,
+      },
+    },
     line_items: [
       {
         price: priceId,
         quantity: 1,
       },
     ],
-    discounts: couponId
-      ? [
-          {
-            coupon: couponId,
-          },
-        ]
-      : [],
     success_url: successUrl,
     cancel_url: cancelUrl,
-    ...extraParams,
+    tax_id_collection: { enabled: true },
   });
-
-  return stripeSession.url;
-};
+}
 
 // This is used to create Customer Portal sessions, so users can manage their subscriptions (payment methods, cancel, etc..)
 export const createCustomerPortal = async ({ customerId, returnUrl }) => {
   try {
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-
-    const portalSession = await stripe.billingPortal.sessions.create({
+    const portalSession = await getStripe().billingPortal.sessions.create({
       customer: customerId,
       return_url: returnUrl,
     });
@@ -71,12 +105,10 @@ export const createCustomerPortal = async ({ customerId, returnUrl }) => {
   }
 };
 
-// This is used to get the uesr checkout session and populate the data so we get the planId the user subscribed to
+// This is used to get the user checkout session and populate the data so we get the planId the user subscribed to
 export const findCheckoutSession = async (sessionId) => {
   try {
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-
-    const session = await stripe.checkout.sessions.retrieve(sessionId, {
+    const session = await getStripe().checkout.sessions.retrieve(sessionId, {
       expand: ["line_items"],
     });
 

@@ -1,34 +1,14 @@
 import { NextResponse } from "next/server";
 import connectMongo from "@/libs/mongoose";
-import User from "@/models/User";
-import Stripe from "stripe";
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-
-const PRICE_TO_PLAN = {
-  [process.env.STRIPE_PRICE_STARTER_MONTHLY]: "starter",
-  [process.env.STRIPE_PRICE_BUSINESS_MONTHLY]: "business",
-};
-
-function planFromPriceId(priceId) {
-  if (!priceId) return "free";
-  return PRICE_TO_PLAN[priceId] || "free";
-}
-
-function updateFromPlan(plan, extra = {}) {
-  return {
-    ...extra,
-    plan,
-    hasAccess: plan !== "free",
-  };
-}
+import WebhookEvent from "@/models/WebhookEvent";
+import { getStripe } from "@/libs/stripe";
+import { syncStripeBillingState } from "@/libs/billing-state";
+import { planFromPriceId } from "@/libs/subscription";
+import { logSecurityEvent } from "@/libs/security/audit";
 
 function planFromSubscription(subscription) {
   const priceId = subscription?.items?.data?.[0]?.price?.id || null;
-  const activeStatuses = new Set(["active", "trialing"]);
-  const plan = activeStatuses.has(subscription?.status)
-    ? planFromPriceId(priceId)
-    : "free";
+  const plan = planFromPriceId(priceId);
 
   return {
     priceId,
@@ -36,12 +16,14 @@ function planFromSubscription(subscription) {
   };
 }
 
-async function findPriceIdFromCheckoutSession(sessionId) {
-  const fullSession = await stripe.checkout.sessions.retrieve(sessionId, {
-    expand: ["line_items.data.price"],
-  });
+async function getExpandedSubscription(subscriptionId) {
+  if (!subscriptionId) {
+    return null;
+  }
 
-  return fullSession?.line_items?.data?.[0]?.price?.id || null;
+  return getStripe().subscriptions.retrieve(subscriptionId, {
+    expand: ["items.data.price"],
+  });
 }
 
 export async function POST(req) {
@@ -50,84 +32,138 @@ export async function POST(req) {
 
   let event;
   try {
-    event = stripe.webhooks.constructEvent(
+    // Stripe signs the raw payload so we verify the signature before touching billing state.
+    if (!signature || !process.env.STRIPE_WEBHOOK_SECRET) {
+      throw new Error("Missing Stripe webhook signature or secret.");
+    }
+
+    event = getStripe().webhooks.constructEvent(
       body,
       signature,
       process.env.STRIPE_WEBHOOK_SECRET
     );
   } catch (e) {
-    console.error("Webhook signature verification failed:", e.message);
+    logSecurityEvent("billing.webhook_signature_failed", {
+      provider: "stripe",
+      message: e.message,
+    });
     return NextResponse.json({ error: e.message }, { status: 400 });
   }
 
   await connectMongo();
 
-  switch (event.type) {
-    case "checkout.session.completed": {
-      const session = event.data.object;
-      const customerId = session.customer || null;
-      const clientReferenceId = session.client_reference_id || null;
+  try {
+    // Persist the event id up front so retries do not double-apply subscription changes.
+    await WebhookEvent.create({
+      provider: "stripe",
+      eventId: event.id,
+      type: event.type,
+    });
+  } catch (error) {
+    if (error?.code === 11000) {
+      return NextResponse.json({ received: true, duplicate: true });
+    }
 
-      let priceId = session?.line_items?.data?.[0]?.price?.id || null;
-      if (!priceId) {
-        try {
-          priceId = await findPriceIdFromCheckoutSession(session.id);
-        } catch (e) {
-          console.error("Failed to resolve checkout session price:", e.message);
+    logSecurityEvent("billing.webhook_dedup_failed", {
+      provider: "stripe",
+      eventId: event.id,
+      message: error?.message,
+    });
+    return NextResponse.json({ error: "Webhook persistence failed" }, { status: 500 });
+  }
+
+  try {
+    switch (event.type) {
+      case "checkout.session.completed": {
+        const session = event.data.object;
+        const subscription = await getExpandedSubscription(session.subscription);
+        const priceId =
+          subscription?.items?.data?.[0]?.price?.id ||
+          session?.metadata?.priceId ||
+          null;
+        const plan = session?.metadata?.selectedPlan || planFromPriceId(priceId);
+        const syncedUser = await syncStripeBillingState({
+          clientReferenceId: session.client_reference_id || session?.metadata?.userId,
+          stripeCustomerId: session.customer || null,
+          stripeSubscriptionId: session.subscription || null,
+          stripePriceId: priceId,
+          status: subscription?.status || "incomplete",
+          plan,
+          email: session.customer_details?.email || session?.metadata?.email || null,
+          checkoutSessionId: session.id,
+          currentPeriodEnd: subscription?.current_period_end || null,
+          cancelAtPeriodEnd: Boolean(subscription?.cancel_at_period_end),
+        });
+
+        if (!syncedUser) {
+          throw new Error(`Unable to map Checkout Session ${session.id} to a user record.`);
         }
+        break;
       }
 
-      const plan = planFromPriceId(priceId);
-      const update = updateFromPlan(plan, { customerId, priceId });
+      case "customer.subscription.created":
+      case "customer.subscription.updated": {
+        const subscription = event.data.object;
+        const { priceId, plan } = planFromSubscription(subscription);
+        const syncedUser = await syncStripeBillingState({
+          stripeCustomerId: subscription.customer || null,
+          stripeSubscriptionId: subscription.id,
+          stripePriceId: priceId,
+          status: subscription.status || "inactive",
+          plan,
+          currentPeriodEnd: subscription.current_period_end || null,
+          cancelAtPeriodEnd: Boolean(subscription.cancel_at_period_end),
+        });
 
-      if (clientReferenceId) {
-        await User.findByIdAndUpdate(clientReferenceId, update, { new: true });
-      } else if (customerId) {
-        await User.findOneAndUpdate({ customerId }, update, { new: true });
+        if (!syncedUser) {
+          throw new Error(
+            `Unable to map Stripe subscription ${subscription.id} to a user record.`
+          );
+        }
+        break;
       }
-      break;
+
+      case "customer.subscription.deleted": {
+        const subscription = event.data.object;
+        const { priceId, plan } = planFromSubscription(subscription);
+        const syncedUser = await syncStripeBillingState({
+          stripeCustomerId: subscription.customer || null,
+          stripeSubscriptionId: subscription.id,
+          stripePriceId: priceId,
+          status: subscription.status || "canceled",
+          plan,
+          currentPeriodEnd: subscription.current_period_end || null,
+          cancelAtPeriodEnd: Boolean(subscription.cancel_at_period_end),
+        });
+
+        if (!syncedUser) {
+          throw new Error(
+            `Unable to map deleted Stripe subscription ${subscription.id} to a user record.`
+          );
+        }
+        break;
+      }
+
+      default:
+        break;
     }
-
-    case "invoice.paid": {
-      const invoice = event.data.object;
-      const customerId = invoice.customer;
-      const priceId = invoice.lines?.data?.[0]?.price?.id || null;
-      const plan = planFromPriceId(priceId);
-
-      await User.findOneAndUpdate(
-        { customerId },
-        updateFromPlan(plan, {
-          ...(priceId ? { priceId } : {}),
-        })
-      );
-      break;
+  } catch (error) {
+    try {
+      await WebhookEvent.deleteOne({ provider: "stripe", eventId: event.id });
+    } catch (cleanupError) {
+      logSecurityEvent("billing.webhook_cleanup_failed", {
+        provider: "stripe",
+        eventId: event.id,
+        message: cleanupError?.message,
+      });
     }
-
-    case "customer.subscription.updated": {
-      const subscription = event.data.object;
-      const customerId = subscription.customer;
-      const { priceId, plan } = planFromSubscription(subscription);
-
-      await User.findOneAndUpdate(
-        { customerId },
-        updateFromPlan(plan, { ...(priceId ? { priceId } : {}) })
-      );
-      break;
-    }
-
-    case "invoice.payment_failed": {
-      // Stripe can recover failed charges via retries, so don't revoke access yet.
-      break;
-    }
-
-    case "customer.subscription.deleted": {
-      const customerId = event.data.object.customer;
-      await User.findOneAndUpdate({ customerId }, updateFromPlan("free"));
-      break;
-    }
-
-    default:
-      break;
+    logSecurityEvent("billing.webhook_handler_failed", {
+      provider: "stripe",
+      eventId: event.id,
+      type: event.type,
+      message: error?.message,
+    });
+    return NextResponse.json({ error: "Webhook handler failed" }, { status: 500 });
   }
 
   return NextResponse.json({ received: true });

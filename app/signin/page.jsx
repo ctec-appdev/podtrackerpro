@@ -1,9 +1,10 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { signIn } from "next-auth/react";
+import { signIn, useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { useSearchParams } from "next/navigation";
 import { sanitizeCallbackPath } from "@/libs/security/urls";
 
@@ -16,8 +17,20 @@ export default function SigninPage() {
 }
 
 function SigninContent() {
+    const router = useRouter();
     const searchParams = useSearchParams();
     const callbackUrl = sanitizeCallbackPath(searchParams.get("callbackUrl"), "/dashboard");
+    const { status } = useSession();
+
+    useEffect(() => {
+        if (status === "authenticated") {
+            router.replace(callbackUrl);
+        }
+    }, [callbackUrl, router, status]);
+
+    if (status === "authenticated") {
+        return null;
+    }
 
     return (
         <main style={{

@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Button from "@mui/material/Button";
 import Box from "@mui/material/Box";
 import FormControl from "@mui/material/FormControl";
@@ -93,6 +94,21 @@ const TABS = [
 const BOTTOM_TABS = [
   { id: "improve-ptp", label: "Improve PTP", icon: "+" },
 ];
+
+const VALID_TAB_IDS = new Set([
+  "dashboard",
+  "niche-home",
+  "niches",
+  "keywords",
+  "trends",
+  "trademark",
+  "research",
+  "briefs",
+  "seo",
+  "ideas",
+  "inventory",
+  "guide",
+]);
 
 const CANNY_BOARD_URL = "https://podtrackerpro.canny.io/feature-requests";
 
@@ -1943,7 +1959,13 @@ function CSVSampleButton({ label, filename, columns, sampleRow }) {
 // ─── MAIN APP ──────────────────────────────────
 export default function PODTracker() {
   const { data: session, status } = useSession();
-  const [tab, setTab] = useState("dashboard");
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get("tab");
+  const [tab, setTabState] = useState(
+    initialTab && VALID_TAB_IDS.has(initialTab) ? initialTab : "dashboard"
+  );
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [openNavGroups, setOpenNavGroups] = useState({ "research-group": true, "design-group": true });
   const [selectedNicheContext, setSelectedNicheContext] = useState(null);
@@ -1952,6 +1974,36 @@ export default function PODTracker() {
   const [loading, setLoading] = useState(false);
   const [plan, setPlan] = useState("free");
   const [usage, setUsage] = useState({});
+
+  useEffect(() => {
+    const tabParam = searchParams.get("tab");
+    const nextTab = tabParam && VALID_TAB_IDS.has(tabParam) ? tabParam : "dashboard";
+
+    setTabState((currentTab) => (currentTab === nextTab ? currentTab : nextTab));
+  }, [searchParams]);
+
+  const setTab = useCallback(
+    (nextTab, options = {}) => {
+      if (!VALID_TAB_IDS.has(nextTab)) {
+        return;
+      }
+
+      const navigate = options.history === "replace" ? router.replace : router.push;
+      const params = new URLSearchParams(searchParams.toString());
+
+      if (nextTab === "dashboard") {
+        params.delete("tab");
+      } else {
+        params.set("tab", nextTab);
+      }
+
+      const nextUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+
+      setTabState((currentTab) => (currentTab === nextTab ? currentTab : nextTab));
+      navigate(nextUrl, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2063,7 +2115,7 @@ export default function PODTracker() {
     if (!niche) return;
     setSelectedNicheContext({ niche, subNiche: subNiche || "" });
     setTab("niche-home");
-  }, []);
+  }, [setTab]);
 
   if (!loaded) {
     return (

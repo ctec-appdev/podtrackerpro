@@ -1,10 +1,10 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { signIn } from "next-auth/react";
-import { useSearchParams } from "next/navigation";
+import { signIn, useSession } from "next-auth/react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { sanitizeCallbackPath } from "@/libs/security/urls";
 
 export default function SignupPage() {
@@ -16,10 +16,18 @@ export default function SignupPage() {
 }
 
 function SignupContent() {
+    const router = useRouter();
     const searchParams = useSearchParams();
     const callbackUrl = sanitizeCallbackPath(searchParams.get("callbackUrl"), "/dashboard");
+    const { status } = useSession();
     const [name, setName] = useState("");
     const [nameError, setNameError] = useState("");
+
+    useEffect(() => {
+        if (status === "authenticated") {
+            router.replace(callbackUrl);
+        }
+    }, [callbackUrl, router, status]);
 
     const handleSignup = () => {
         const trimmedName = name.trim();
@@ -32,6 +40,10 @@ function SignupContent() {
         window.localStorage.setItem("podtrackerpro_signup_name", trimmedName);
         signIn("google", { callbackUrl });
     };
+
+    if (status === "authenticated") {
+        return null;
+    }
 
     return (
         <main style={{

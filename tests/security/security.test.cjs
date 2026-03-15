@@ -18,8 +18,8 @@ test("Claude route enforces authenticated feature access", () => {
 test("Checkout route validates Stripe prices and return URLs", () => {
   const source = readFile("app/api/stripe/create-checkout/route.js");
 
-  assert.match(source, /assertAllowedCheckoutPrice/);
-  assert.match(source, /getSafeReturnPath/);
+  assert.match(source, /assertAllowedCheckoutSelection/);
+  assert.match(source, /getAppUrl/);
   assert.match(source, /Too many checkout attempts/);
 });
 

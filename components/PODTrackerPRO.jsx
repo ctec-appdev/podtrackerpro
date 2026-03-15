@@ -2178,7 +2178,7 @@ export default function PODTracker() {
     initialTab && VALID_TAB_IDS.has(initialTab) ? initialTab : "dashboard"
   );
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [openNavGroups, setOpenNavGroups] = useState({ "research-group": true, "design-group": true });
+  const [openNavGroups, setOpenNavGroups] = useState({ "research-group": false, "design-group": false });
   const [selectedNicheContext, setSelectedNicheContext] = useState(null);
   const [data, setData] = useState(EMPTY_TRACKER_DATA);
   const [loaded, setLoaded] = useState(false);
@@ -2593,68 +2593,6 @@ export default function PODTracker() {
           </button>
         ))}
 
-        {/* Plan badge in sidebar */}
-        <div
-          style={{
-            padding: isSidebarCollapsed ? "10px 8px" : "10px 16px",
-            borderTop: `1px solid ${C.border}`,
-            borderBottom: `1px solid ${C.border}`,
-            marginBottom: 4,
-          }}
-        >
-          {isSidebarCollapsed ? (
-            <div
-              title={`Current plan: ${PLAN_LIMITS[plan].name}`}
-              style={{
-                fontSize: 13,
-                color: plan === "business" ? C.warn : plan === "starter" ? C.accent : C.textDim,
-                fontFamily: font,
-                fontWeight: 700,
-                textAlign: "center",
-              }}
-            >
-              {PLAN_LIMITS[plan].name.charAt(0)}
-            </div>
-          ) : (
-            <div style={{ fontSize: 11, color: C.textMuted, fontFamily: font, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>
-              Current Plan
-            </div>
-          )}
-          {!isSidebarCollapsed && (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span
-              style={{
-                fontFamily: font,
-                fontSize: 14,
-                fontWeight: 700,
-                color: plan === "business" ? C.warn : plan === "starter" ? C.accent : C.textDim,
-              }}
-            >
-              {PLAN_LIMITS[plan].name}
-            </span>
-            {plan === "free" && (
-              <a
-                href="/pricing"
-                style={{ fontSize: 11, color: C.accent, fontFamily: font, textDecoration: "none" }}
-              >
-                Upgrade ↗
-              </a>
-            )}
-            </div>
-          )}
-        </div>
-
-        <div
-          style={{
-            padding: isSidebarCollapsed ? "12px 8px" : "12px 20px",
-            fontSize: 19,
-            color: C.textMuted,
-            fontFamily: font,
-            textAlign: isSidebarCollapsed ? "center" : "left",
-          }}
-        >
-          {isSidebarCollapsed ? `${data.niches.length}/${data.inventory.length}` : `${data.niches.length} niches · ${data.inventory.length} listings`}
-        </div>
         <div
           style={{
             padding: isSidebarCollapsed ? "0 8px 12px" : "0 14px 14px",

@@ -795,12 +795,95 @@ function createDcebHistoryEntry(result, fallback = {}) {
   };
 }
 
+function clampDcebValue(value) {
+  const numeric = Number(value);
+  if (Number.isNaN(numeric)) return 0;
+  return Math.max(1, Math.min(10, numeric));
+}
+
+function buildManualDcebDraft(source = {}) {
+  return {
+    demand: source?.demand ? String(source.demand) : "",
+    demandReason: source?.demandReason || "",
+    competition: source?.competition ? String(source.competition) : "",
+    competitionReason: source?.competitionReason || "",
+    evergreen: source?.evergreen ? String(source.evergreen) : "",
+    evergreenReason: source?.evergreenReason || "",
+    brandability: source?.brandability ? String(source.brandability) : "",
+    brandabilityReason: source?.brandabilityReason || "",
+    summary: source?.summary || "",
+    verdict: source?.verdict || "",
+    suggestedKeywordsText: Array.isArray(source?.suggestedKeywords)
+      ? source.suggestedKeywords.join(", ")
+      : source?.suggestedKeywordsText || "",
+  };
+}
+
+function getManualDcebMissingFields(draft = {}) {
+  const missing = [];
+
+  if (!draft?.demand) missing.push("Demand score");
+  if (!draft?.demandReason?.trim()) missing.push("Demand reason");
+  if (!draft?.competition) missing.push("Competition score");
+  if (!draft?.competitionReason?.trim()) missing.push("Competition reason");
+  if (!draft?.evergreen) missing.push("Evergreen score");
+  if (!draft?.evergreenReason?.trim()) missing.push("Evergreen reason");
+  if (!draft?.brandability) missing.push("Brandability score");
+  if (!draft?.brandabilityReason?.trim()) missing.push("Brandability reason");
+
+  return missing;
+}
+
+function buildManualDcebResult({
+  niche,
+  subNiche,
+  draft,
+  relatedKeywords = [],
+  relatedBriefs = [],
+  relatedListings = [],
+}) {
+  const demand = clampDcebValue(draft?.demand);
+  const competition = clampDcebValue(draft?.competition);
+  const evergreen = clampDcebValue(draft?.evergreen);
+  const brandability = clampDcebValue(draft?.brandability);
+  const score = ((demand + evergreen + brandability + (10 - competition)) / 4).toFixed(1);
+  const suggestedKeywords = (draft?.suggestedKeywordsText || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const fallbackKeywords = relatedKeywords
+    .map((item) => item?.keyword?.trim())
+    .filter(Boolean)
+    .slice(0, 5);
+
+  return {
+    niche,
+    subNiche: normalizeSubNicheLabel(subNiche),
+    demand,
+    demandReason: draft?.demandReason?.trim() || "",
+    competition,
+    competitionReason: draft?.competitionReason?.trim() || "",
+    evergreen,
+    evergreenReason: draft?.evergreenReason?.trim() || "",
+    brandability,
+    brandabilityReason: draft?.brandabilityReason?.trim() || "",
+    summary:
+      draft?.summary?.trim() ||
+      `Manual DCEB created from your saved niche inputs, ${relatedKeywords.length} keyword${relatedKeywords.length === 1 ? "" : "s"}, ${relatedBriefs.length} brief${relatedBriefs.length === 1 ? "" : "s"}, and ${relatedListings.length} listing${relatedListings.length === 1 ? "" : "s"}.`,
+    suggestedKeywords: suggestedKeywords.length ? suggestedKeywords : fallbackKeywords,
+    verdict:
+      draft?.verdict ||
+      (Number(score) >= 7 ? "Go" : Number(score) >= 5 ? "Maybe" : "Skip"),
+  };
+}
+
 async function persistDcebHistory({
   data,
   niche,
   results,
   addItem,
   updateItem,
+  profileUpdates = {},
 }) {
   const baseNiche = niche || results?.[0]?.niche || "";
   if (!baseNiche || !Array.isArray(results) || !results.length) {
@@ -823,9 +906,11 @@ async function persistDcebHistory({
     niche: baseNiche,
     notesHtml: existingProfile?.notesHtml || "<p></p>",
     aiResearch: existingProfile?.aiResearch || null,
+    manualDceb: existingProfile?.manualDceb || null,
     dcebHistory: mergedHistory,
     latestDceb: mergedHistory[0] || null,
     updatedAt: new Date().toISOString(),
+    ...profileUpdates,
   };
 
   if (profileIndex >= 0) {
@@ -7961,6 +8046,7 @@ function NicheHomeView({
   const [profileDraft, setProfileDraft] = useState(null);
   const [savedBanner, setSavedBanner] = useState(false);
   const [selectedDcebHistoryId, setSelectedDcebHistoryId] = useState("");
+  const [dcebHistoryView, setDcebHistoryView] = useState("list");
   const limits = PLAN_LIMITS[plan];
   const nicheKey = getNicheProfileId(niche);
 
@@ -8045,6 +8131,15 @@ function NicheHomeView({
   const latestFocusedDceb = focusedDcebHistory[0] || null;
   const selectedDcebEntry =
     focusedDcebHistory.find((entry) => entry.id === selectedDcebHistoryId) || latestFocusedDceb;
+  const primaryNicheRecord = focusNiches[0] || relatedNiches[0] || null;
+  const manualDcebSeed = useMemo(
+    () => buildManualDcebDraft(profile?.manualDceb || latestFocusedDceb || primaryNicheRecord || {}),
+    [latestFocusedDceb, primaryNicheRecord, profile?.manualDceb]
+  );
+  const manualDcebMissingFields = useMemo(
+    () => getManualDcebMissingFields(profileDraft?.manualDceb || manualDcebSeed),
+    [manualDcebSeed, profileDraft?.manualDceb]
+  );
 
   useEffect(() => {
     if (!niche) return;
@@ -8052,11 +8147,12 @@ function NicheHomeView({
       niche,
       notesHtml: profile?.notesHtml || "<p></p>",
       aiResearch: profile?.aiResearch || null,
+      manualDceb: profile?.manualDceb || manualDcebSeed,
       dcebHistory: profile?.dcebHistory || [],
       latestDceb: profile?.latestDceb || null,
       updatedAt: profile?.updatedAt || "",
     });
-  }, [niche, profile]);
+  }, [manualDcebSeed, niche, profile]);
 
   useEffect(() => {
     if (!profileDraft || !notesRef.current) return;
@@ -8076,6 +8172,10 @@ function NicheHomeView({
     setSelectedDcebHistoryId(latestFocusedDceb?.id || "");
   }, [latestFocusedDceb?.id]);
 
+  useEffect(() => {
+    setDcebHistoryView("list");
+  }, [niche, subNiche]);
+
   const saveProfile = useCallback(
     async (updates = {}) => {
       if (!niche) return;
@@ -8083,6 +8183,7 @@ function NicheHomeView({
         niche,
         notesHtml: notesRef.current?.innerHTML || profileDraft?.notesHtml || "<p></p>",
         aiResearch: profileDraft?.aiResearch || null,
+        manualDceb: profileDraft?.manualDceb || profile?.manualDceb || manualDcebSeed,
         dcebHistory: profileDraft?.dcebHistory || profile?.dcebHistory || [],
         latestDceb: profileDraft?.latestDceb || profile?.latestDceb || null,
         updatedAt: new Date().toISOString(),
@@ -8098,7 +8199,7 @@ function NicheHomeView({
       setProfileDraft(nextProfile);
       setSavedBanner(true);
     },
-    [addItem, niche, profile?.dcebHistory, profile?.latestDceb, profileDraft, profileIndex, updateItem]
+    [addItem, manualDcebSeed, niche, profile?.dcebHistory, profile?.latestDceb, profile?.manualDceb, profileDraft, profileIndex, updateItem]
   );
 
   const runNicheResearch = async () => {
@@ -8126,15 +8227,32 @@ function NicheHomeView({
 
 Return JSON:
 {
-  "overview":"2-3 sentence summary",
-  "audience":"who buys in this niche",
-  "opportunities":["...","...","..."],
-  "risks":["...","..."],
-  "suggestedSubNiches":["...","...","..."],
-  "suggestedKeywords":["...","...","..."],
-  "nextActions":["...","...","..."]
+  "snapshot": {
+    "overview":"2-3 sentence summary",
+    "audience":"who buys in this niche",
+    "opportunities":["...","...","..."],
+    "risks":["...","..."],
+    "suggestedSubNiches":["...","...","..."],
+    "suggestedKeywords":["...","...","..."],
+    "nextActions":["...","...","..."]
+  },
+  "dceb": {
+    "niche": "${niche}",
+    "subNiche": "${normalizeSubNicheLabel(subNiche)}",
+    "demand": 1-10,
+    "demandReason": "one sentence why",
+    "competition": 1-10,
+    "competitionReason": "one sentence why",
+    "evergreen": 1-10,
+    "evergreenReason": "one sentence why",
+    "brandability": 1-10,
+    "brandabilityReason": "one sentence why",
+    "summary": "2-3 sentence overall assessment",
+    "suggestedKeywords": ["keyword1", "keyword2", "keyword3"],
+    "verdict": "Go|Maybe|Skip"
+  }
 }`,
-      "You are a Print on Demand niche strategist. Be specific, practical, and concise.",
+      "You are a Print on Demand niche strategist. Return both a dashboard-style strategic snapshot and a strict DCEB scoring block. Be specific, practical, and concise.",
       featureKey
     );
     setLoading(false);
@@ -8144,7 +8262,41 @@ Return JSON:
       return;
     }
 
-    await saveProfile({ aiResearch: result });
+    const snapshot = result?.snapshot || result;
+    const dcebResult = result?.dceb;
+
+    if (dcebResult) {
+      const savedEntries = await persistDcebHistory({
+        data,
+        niche,
+        results: [{ ...dcebResult, niche, subNiche: normalizeSubNicheLabel(subNiche) }],
+        addItem,
+        updateItem,
+        profileUpdates: {
+          aiResearch: snapshot,
+          manualDceb: profileDraft?.manualDceb || profile?.manualDceb || manualDcebSeed,
+        },
+      });
+
+      setProfileDraft((prev) => ({
+        ...(prev || {}),
+        niche,
+        notesHtml: notesRef.current?.innerHTML || prev?.notesHtml || "<p></p>",
+        aiResearch: snapshot,
+        manualDceb: prev?.manualDceb || profile?.manualDceb || manualDcebSeed,
+        dcebHistory: savedEntries.length ? [savedEntries[0], ...(prev?.dcebHistory || profile?.dcebHistory || [])] : prev?.dcebHistory || profile?.dcebHistory || [],
+        latestDceb: savedEntries[0] || prev?.latestDceb || profile?.latestDceb || null,
+        updatedAt: new Date().toISOString(),
+      }));
+
+      if (savedEntries[0]) {
+        setSelectedDcebHistoryId(savedEntries[0].id);
+      }
+
+      return;
+    }
+
+    await saveProfile({ aiResearch: snapshot });
   };
 
   const runDcebRecheck = async () => {
@@ -8200,6 +8352,55 @@ Return JSON: {
     }
   };
 
+  const runManualDcebBuild = async () => {
+    if (!niche) return;
+
+    const draft = profileDraft?.manualDceb || manualDcebSeed;
+    const missing = getManualDcebMissingFields(draft);
+
+    if (missing.length) {
+      alert(`Add the missing DCEB fields first:\n\n- ${missing.join("\n- ")}`);
+      return;
+    }
+
+    const manualResult = buildManualDcebResult({
+      niche,
+      subNiche,
+      draft,
+      relatedKeywords,
+      relatedBriefs,
+      relatedListings,
+    });
+
+    const savedEntries = await persistDcebHistory({
+      data,
+      niche,
+      results: [manualResult],
+      addItem,
+      updateItem,
+      profileUpdates: {
+        aiResearch: profileDraft?.aiResearch || profile?.aiResearch || null,
+        manualDceb: draft,
+      },
+    });
+
+    setProfileDraft((prev) => ({
+      ...(prev || {}),
+      niche,
+      notesHtml: notesRef.current?.innerHTML || prev?.notesHtml || "<p></p>",
+      aiResearch: prev?.aiResearch || profile?.aiResearch || null,
+      manualDceb: draft,
+      dcebHistory: savedEntries.length ? [savedEntries[0], ...(prev?.dcebHistory || profile?.dcebHistory || [])] : prev?.dcebHistory || profile?.dcebHistory || [],
+      latestDceb: savedEntries[0] || prev?.latestDceb || profile?.latestDceb || null,
+      updatedAt: new Date().toISOString(),
+    }));
+
+    if (savedEntries[0]) {
+      setSelectedDcebHistoryId(savedEntries[0].id);
+      setSavedBanner(true);
+    }
+  };
+
   const applyFormat = (command) => {
     if (!notesRef.current) return;
     notesRef.current.focus();
@@ -8218,7 +8419,6 @@ Return JSON: {
   }
 
   const focusTitle = subNiche ? `${niche} / ${subNiche}` : niche;
-  const primaryNicheRecord = focusNiches[0] || relatedNiches[0] || null;
 
   return (
     <div>
@@ -8253,6 +8453,11 @@ Return JSON: {
           ) : (
             <LockedBtn tooltip="Upgrade to Starter or Business to run DCEB checks.">Recheck DCEB</LockedBtn>
           )}
+          {plan === "free" ? (
+            <Btn variant="ghost" onClick={runManualDcebBuild}>
+              Build Manual DCEB
+            </Btn>
+          ) : null}
           <Btn variant="ghost" onClick={() => setSelectedNicheContext({ niche, subNiche: "" })}>
             Reset Focus
           </Btn>
@@ -8290,6 +8495,153 @@ Return JSON: {
               <div style={{ color: C.white, fontSize: 18, fontWeight: 700 }}>{relatedBriefs[0]?.id || "—"}</div>
             </div>
           </div>
+
+          <div style={{ marginTop: 18, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 14 }}>
+              <div>
+                <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 6, fontFamily: font, textTransform: "uppercase", letterSpacing: 1 }}>
+                  Active DCEB
+                </div>
+                <div style={{ color: C.textDim, fontSize: 14, lineHeight: 1.6 }}>
+                  {selectedDcebEntry
+                    ? `Showing the saved DCEB result for ${selectedDcebEntry.subNiche && selectedDcebEntry.subNiche !== "General" ? selectedDcebEntry.subNiche : "this niche"}.`
+                    : "No saved DCEB yet. Run AI niche research or build one manually below to save the first score."}
+                </div>
+              </div>
+              {selectedDcebEntry ? (
+                <Badge color={selectedDcebEntry.verdict === "Go" ? "success" : selectedDcebEntry.verdict === "Maybe" ? "warn" : "danger"}>
+                  {selectedDcebEntry.verdict}
+                </Badge>
+              ) : null}
+            </div>
+
+            {selectedDcebEntry ? (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 14 }}>
+                  <div>
+                    <DCEBBar label="Demand" letter="D" value={selectedDcebEntry.demand} reason={selectedDcebEntry.demandReason} />
+                    <DCEBBar label="Competition" letter="C" value={selectedDcebEntry.competition} reason={selectedDcebEntry.competitionReason} />
+                  </div>
+                  <div>
+                    <DCEBBar label="Evergreen" letter="E" value={selectedDcebEntry.evergreen} reason={selectedDcebEntry.evergreenReason} />
+                    <DCEBBar label="Brandability" letter="B" value={selectedDcebEntry.brandability} reason={selectedDcebEntry.brandabilityReason} />
+                  </div>
+                </div>
+                {selectedDcebEntry.summary ? (
+                  <div style={{ background: C.card, borderRadius: 8, padding: 12, borderLeft: `3px solid ${C.accent}`, marginBottom: 12 }}>
+                    <div style={{ color: C.text, lineHeight: 1.6 }}>{selectedDcebEntry.summary}</div>
+                  </div>
+                ) : null}
+                {selectedDcebEntry.suggestedKeywords?.length > 0 ? (
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {selectedDcebEntry.suggestedKeywords.map((item, index) => (
+                      <Badge key={`${item}-${index}`}>{item}</Badge>
+                    ))}
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+
+          {plan === "free" ? (
+            <div style={{ marginTop: 18, background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 14 }}>
+                <div>
+                  <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 6, fontFamily: font, textTransform: "uppercase", letterSpacing: 1 }}>
+                    Manual DCEB Builder
+                  </div>
+                  <div style={{ color: C.textDim, fontSize: 14, lineHeight: 1.6 }}>
+                    Fill in the factor scores and reasoning below, then save the result to this niche homepage and DCEB history.
+                  </div>
+                </div>
+                <Btn onClick={runManualDcebBuild}>Save Manual DCEB</Btn>
+              </div>
+
+              {manualDcebMissingFields.length ? (
+                <div style={{ marginBottom: 14, padding: "12px 14px", borderRadius: 10, border: `1px solid ${C.warn}`, background: C.warnDim }}>
+                  <div style={{ color: C.warn, fontWeight: 700, marginBottom: 8 }}>Missing fields to generate DCEB</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {manualDcebMissingFields.map((item) => (
+                      <Badge key={item} color="warn">{item}</Badge>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, marginBottom: 12 }}>
+                <Select
+                  value={profileDraft?.manualDceb?.demand || ""}
+                  onChange={(value) => setProfileDraft((prev) => ({ ...prev, manualDceb: { ...(prev?.manualDceb || manualDcebSeed), demand: value } }))}
+                  options={["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]}
+                  placeholder="Demand score"
+                />
+                <Select
+                  value={profileDraft?.manualDceb?.competition || ""}
+                  onChange={(value) => setProfileDraft((prev) => ({ ...prev, manualDceb: { ...(prev?.manualDceb || manualDcebSeed), competition: value } }))}
+                  options={["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]}
+                  placeholder="Competition score"
+                />
+                <Select
+                  value={profileDraft?.manualDceb?.evergreen || ""}
+                  onChange={(value) => setProfileDraft((prev) => ({ ...prev, manualDceb: { ...(prev?.manualDceb || manualDcebSeed), evergreen: value } }))}
+                  options={["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]}
+                  placeholder="Evergreen score"
+                />
+                <Select
+                  value={profileDraft?.manualDceb?.brandability || ""}
+                  onChange={(value) => setProfileDraft((prev) => ({ ...prev, manualDceb: { ...(prev?.manualDceb || manualDcebSeed), brandability: value } }))}
+                  options={["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]}
+                  placeholder="Brandability score"
+                />
+              </div>
+
+              <div style={{ display: "grid", gap: 10 }}>
+                <TextArea
+                  value={profileDraft?.manualDceb?.demandReason || ""}
+                  onChange={(value) => setProfileDraft((prev) => ({ ...prev, manualDceb: { ...(prev?.manualDceb || manualDcebSeed), demandReason: value } }))}
+                  placeholder="Why did you score demand this way?"
+                  rows={2}
+                />
+                <TextArea
+                  value={profileDraft?.manualDceb?.competitionReason || ""}
+                  onChange={(value) => setProfileDraft((prev) => ({ ...prev, manualDceb: { ...(prev?.manualDceb || manualDcebSeed), competitionReason: value } }))}
+                  placeholder="Why did you score competition this way?"
+                  rows={2}
+                />
+                <TextArea
+                  value={profileDraft?.manualDceb?.evergreenReason || ""}
+                  onChange={(value) => setProfileDraft((prev) => ({ ...prev, manualDceb: { ...(prev?.manualDceb || manualDcebSeed), evergreenReason: value } }))}
+                  placeholder="Why did you score evergreen this way?"
+                  rows={2}
+                />
+                <TextArea
+                  value={profileDraft?.manualDceb?.brandabilityReason || ""}
+                  onChange={(value) => setProfileDraft((prev) => ({ ...prev, manualDceb: { ...(prev?.manualDceb || manualDcebSeed), brandabilityReason: value } }))}
+                  placeholder="Why did you score brandability this way?"
+                  rows={2}
+                />
+                <TextArea
+                  value={profileDraft?.manualDceb?.summary || ""}
+                  onChange={(value) => setProfileDraft((prev) => ({ ...prev, manualDceb: { ...(prev?.manualDceb || manualDcebSeed), summary: value } }))}
+                  placeholder="Optional summary for this DCEB"
+                  rows={3}
+                />
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 180px) 1fr", gap: 12 }}>
+                  <Select
+                    value={profileDraft?.manualDceb?.verdict || ""}
+                    onChange={(value) => setProfileDraft((prev) => ({ ...prev, manualDceb: { ...(prev?.manualDceb || manualDcebSeed), verdict: value } }))}
+                    options={["Go", "Maybe", "Skip"]}
+                    placeholder="Verdict"
+                  />
+                  <Input
+                    value={profileDraft?.manualDceb?.suggestedKeywordsText || ""}
+                    onChange={(value) => setProfileDraft((prev) => ({ ...prev, manualDceb: { ...(prev?.manualDceb || manualDcebSeed), suggestedKeywordsText: value } }))}
+                    placeholder="Suggested keywords (comma separated)"
+                  />
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           <div style={{ marginTop: 18 }}>
             <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 10, fontFamily: font, textTransform: "uppercase", letterSpacing: 1 }}>
@@ -8374,59 +8726,140 @@ Return JSON: {
                 : "Run a DCEB check to start building saved scoring history for this niche."}
             </div>
           </div>
-          {selectedDcebEntry && (
-            <Badge color={selectedDcebEntry.verdict === "Go" ? "success" : selectedDcebEntry.verdict === "Maybe" ? "warn" : "danger"}>
-              {selectedDcebEntry.verdict}
-            </Badge>
-          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <Btn
+              variant="ghost"
+              onClick={() => setDcebHistoryView((current) => (current === "chat" ? "list" : "chat"))}
+              style={{ fontSize: 13, padding: "6px 10px" }}
+            >
+              {dcebHistoryView === "chat" ? "List View" : "Chat View"}
+            </Btn>
+            {selectedDcebEntry && (
+              <Badge color={selectedDcebEntry.verdict === "Go" ? "success" : selectedDcebEntry.verdict === "Maybe" ? "warn" : "danger"}>
+                {selectedDcebEntry.verdict}
+              </Badge>
+            )}
+          </div>
         </div>
 
         {selectedDcebEntry ? (
-          <div style={{ display: "grid", gridTemplateColumns: "1.3fr 0.9fr", gap: 20 }}>
-            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
-                <div>
-                  <div style={{ color: C.white, fontSize: 20, fontWeight: 700 }}>
-                    {selectedDcebEntry.niche}
-                    {selectedDcebEntry.subNiche && selectedDcebEntry.subNiche !== "General" ? ` / ${selectedDcebEntry.subNiche}` : ""}
-                  </div>
-                  <div style={{ color: C.textMuted, fontSize: 13 }}>
-                    Saved {new Date(selectedDcebEntry.createdAt).toLocaleString()}
-                  </div>
-                </div>
-                <div style={{ color: C.accent, fontSize: 28, fontWeight: 800, fontFamily: font }}>
-                  {selectedDcebEntry.score}
-                </div>
+          dcebHistoryView === "chat" ? (
+            <div style={{ display: "grid", gap: 12 }}>
+              <div style={{ color: C.textDim, fontSize: 14, lineHeight: 1.6 }}>
+                Chat view shows each saved DCEB check as a timeline entry so users can read how Demand, Competition, Evergreen, and Brandability moved over time.
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 14 }}>
-                <div>
-                  <DCEBBar label="Demand" letter="D" value={selectedDcebEntry.demand} reason={selectedDcebEntry.demandReason} />
-                  <DCEBBar label="Competition" letter="C" value={selectedDcebEntry.competition} reason={selectedDcebEntry.competitionReason} />
-                </div>
-                <div>
-                  <DCEBBar label="Evergreen" letter="E" value={selectedDcebEntry.evergreen} reason={selectedDcebEntry.evergreenReason} />
-                  <DCEBBar label="Brandability" letter="B" value={selectedDcebEntry.brandability} reason={selectedDcebEntry.brandabilityReason} />
-                </div>
-              </div>
-              {selectedDcebEntry.summary && (
-                <div style={{ background: C.card, borderRadius: 8, padding: 12, borderLeft: `3px solid ${C.accent}` }}>
-                  <div style={{ color: C.text, lineHeight: 1.6 }}>{selectedDcebEntry.summary}</div>
-                </div>
-              )}
-              {selectedDcebEntry.suggestedKeywords?.length > 0 && (
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>
-                  {selectedDcebEntry.suggestedKeywords.map((item, index) => (
-                    <Badge key={`${item}-${index}`}>{item}</Badge>
-                  ))}
-                </div>
-              )}
-            </div>
+              <div style={{ display: "grid", gap: 12, maxHeight: 540, overflowY: "auto" }}>
+                {focusedDcebHistory.map((entry, index) => {
+                  const isActive = entry.id === selectedDcebEntry.id;
+                  const previousEntry = focusedDcebHistory[index + 1];
+                  const factorPills = [
+                    { label: "D", value: entry.demand, previous: previousEntry?.demand },
+                    { label: "C", value: entry.competition, previous: previousEntry?.competition },
+                    { label: "E", value: entry.evergreen, previous: previousEntry?.evergreen },
+                    { label: "B", value: entry.brandability, previous: previousEntry?.brandability },
+                  ];
 
+                  return (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      onClick={() => setSelectedDcebHistoryId(entry.id)}
+                      style={{
+                        textAlign: "left",
+                        border: `1px solid ${isActive ? C.accent : C.border}`,
+                        background: isActive ? C.accentGlow : C.surface,
+                        borderRadius: 14,
+                        padding: 16,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 8, flexWrap: "wrap" }}>
+                        <div>
+                          <div style={{ color: C.white, fontWeight: 700, marginBottom: 4 }}>
+                            {entry.subNiche && entry.subNiche !== "General" ? entry.subNiche : "General niche"}
+                          </div>
+                          <div style={{ color: C.textDim, fontSize: 13 }}>
+                            {new Date(entry.createdAt).toLocaleString()}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <Badge color={entry.verdict === "Go" ? "success" : entry.verdict === "Maybe" ? "warn" : "danger"}>
+                            {entry.verdict}
+                          </Badge>
+                          <span style={{ color: C.accent, fontWeight: 800, fontSize: 22, fontFamily: font }}>{entry.score}</span>
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                        {factorPills.map((factor) => {
+                          const delta =
+                            typeof factor.previous === "number" ? factor.value - factor.previous : null;
+                          const deltaColor =
+                            delta == null ? C.textMuted : delta > 0 ? C.success : delta < 0 ? C.warn : C.textMuted;
+
+                          return (
+                            <div
+                              key={factor.label}
+                              style={{
+                                minWidth: 86,
+                                padding: "8px 10px",
+                                borderRadius: 10,
+                                border: `1px solid ${isActive ? C.accent : C.border}`,
+                                background: C.card,
+                              }}
+                            >
+                              <div style={{ color: C.textMuted, fontSize: 12, marginBottom: 2, fontFamily: font }}>
+                                {factor.label}
+                              </div>
+                              <div style={{ color: C.white, fontWeight: 700 }}>
+                                {factor.value}
+                                {delta == null ? "" : ` (${delta > 0 ? "+" : ""}${delta})`}
+                              </div>
+                              {delta != null ? (
+                                <div style={{ color: deltaColor, fontSize: 11, marginTop: 2 }}>
+                                  vs prior check
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {entry.summary ? (
+                        <div style={{ color: C.text, lineHeight: 1.6, marginBottom: 8 }}>
+                          {entry.summary}
+                        </div>
+                      ) : null}
+
+                      <div style={{ display: "grid", gap: 6 }}>
+                        <div style={{ color: C.textDim, fontSize: 13 }}>
+                          <strong style={{ color: C.white }}>Demand:</strong> {entry.demandReason || "No note saved."}
+                        </div>
+                        <div style={{ color: C.textDim, fontSize: 13 }}>
+                          <strong style={{ color: C.white }}>Competition:</strong> {entry.competitionReason || "No note saved."}
+                        </div>
+                        <div style={{ color: C.textDim, fontSize: 13 }}>
+                          <strong style={{ color: C.white }}>Evergreen:</strong> {entry.evergreenReason || "No note saved."}
+                        </div>
+                        <div style={{ color: C.textDim, fontSize: 13 }}>
+                          <strong style={{ color: C.white }}>Brandability:</strong> {entry.brandabilityReason || "No note saved."}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+          <div style={{ display: "grid", gap: 12 }}>
+            <div style={{ color: C.textDim, fontSize: 14, lineHeight: 1.6 }}>
+              The active DCEB score and factor breakdown now live in the Niche Snapshot above. Use the history list below to switch between prior saved checks.
+            </div>
             <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16 }}>
               <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 10, fontFamily: font, textTransform: "uppercase", letterSpacing: 1 }}>
                 Previous Checks
               </div>
-              <div style={{ display: "grid", gap: 8, maxHeight: 320, overflowY: "auto" }}>
+              <div style={{ display: "grid", gap: 8, maxHeight: 360, overflowY: "auto" }}>
                 {focusedDcebHistory.map((entry) => {
                   const isActive = entry.id === selectedDcebEntry.id;
                   return (
@@ -8458,6 +8891,7 @@ Return JSON: {
               </div>
             </div>
           </div>
+          )
         ) : (
           <div style={{ color: C.textMuted, lineHeight: 1.7 }}>
             No DCEB history saved yet for this focus. Run a check from the Niches tab or use Recheck DCEB here.

@@ -44,6 +44,7 @@ const STORAGE = {
   briefs: "pod-dash-briefs",
   seo: "pod-dash-seo",
   ideas: "pod-dash-ideas",
+  opportunityTrees: "pod-dash-opportunity-trees",
   customNiches: "pod-dash-custom-niches",
   nicheProfiles: "pod-dash-niche-profiles",
   inventory: "pod-dash-inventory",
@@ -57,6 +58,7 @@ const EMPTY_TRACKER_DATA = {
   briefs: [],
   seo: [],
   ideas: [],
+  opportunityTrees: [],
   customNiches: [],
   nicheProfiles: [],
   inventory: [],
@@ -144,6 +146,27 @@ const IDEA_COLUMNS = [
     help: "Drop finished ideas here once the design is live so you have a lightweight win log.",
   },
 ];
+
+const OST_NODE_LABELS = {
+  outcome: "Outcome",
+  opportunity: "Opportunity",
+  solution: "Solution",
+  experiment: "Experiment",
+};
+
+const OST_NODE_COLORS = {
+  outcome: { chip: "#1d4ed8", border: "rgba(96,165,250,0.5)", background: "rgba(30,64,175,0.22)" },
+  opportunity: { chip: "#0f766e", border: "rgba(45,212,191,0.45)", background: "rgba(15,118,110,0.2)" },
+  solution: { chip: "#7c3aed", border: "rgba(167,139,250,0.42)", background: "rgba(91,33,182,0.18)" },
+  experiment: { chip: "#b45309", border: "rgba(251,191,36,0.42)", background: "rgba(146,64,14,0.18)" },
+};
+
+const OST_CHILD_OPTIONS = {
+  outcome: ["opportunity"],
+  opportunity: ["opportunity", "solution"],
+  solution: ["experiment"],
+  experiment: [],
+};
 
 const EXAMPLE_ROWS = {
   niches: {
@@ -409,12 +432,152 @@ async function saveTrackerState(tracker) {
   return normalized;
 }
 
-function generateIdeaId() {
+function generateTrackerId(prefix = "item") {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
+    return `${prefix}-${crypto.randomUUID()}`;
   }
 
-  return `idea-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function generateIdeaId() {
+  return generateTrackerId("idea");
+}
+
+function createOstNode(type, title = "") {
+  const fallbackTitles = {
+    outcome: "Desired outcome",
+    opportunity: "Customer opportunity",
+    solution: "Proposed solution",
+    experiment: "Experiment or test",
+  };
+
+  return {
+    id: generateTrackerId(type),
+    type,
+    title: title || fallbackTitles[type] || "Untitled node",
+    notes: "",
+    children: [],
+  };
+}
+
+function createOpportunityTree(title = "") {
+  const now = new Date().toISOString();
+
+  return {
+    id: generateTrackerId("ost"),
+    title: title || "New Opportunity Solution Tree",
+    createdAt: now,
+    updatedAt: now,
+    outcome: createOstNode("outcome", "Desired outcome"),
+  };
+}
+
+function escapeHtml(value = "") {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function ostNotesToHtml(notes = "") {
+  const trimmed = String(notes).trim();
+  if (!trimmed) {
+    return "<p></p>";
+  }
+
+  return trimmed
+    .split(/\n{2,}/)
+    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br />")}</p>`)
+    .join("");
+}
+
+function countOstDescendants(node) {
+  if (!node?.children?.length) return 0;
+  return node.children.reduce((total, child) => total + 1 + countOstDescendants(child), 0);
+}
+
+function countOstNodesByType(node, counts = {}) {
+  if (!node) return counts;
+
+  counts[node.type] = (counts[node.type] || 0) + 1;
+  (node.children || []).forEach((child) => countOstNodesByType(child, counts));
+  return counts;
+}
+
+function cloneOstNode(node) {
+  return {
+    ...node,
+    id: generateTrackerId(node.type || "node"),
+    children: (node.children || []).map((child) => cloneOstNode(child)),
+  };
+}
+
+function updateOstNode(node, nodeId, updater) {
+  if (!node) {
+    return { node, updated: false };
+  }
+
+  if (node.id === nodeId) {
+    return { node: updater(node), updated: true };
+  }
+
+  let updated = false;
+  const children = (node.children || []).map((child) => {
+    const result = updateOstNode(child, nodeId, updater);
+    if (result.updated) {
+      updated = true;
+    }
+    return result.node;
+  });
+
+  if (!updated) {
+    return { node, updated: false };
+  }
+
+  return {
+    node: {
+      ...node,
+      children,
+    },
+    updated: true,
+  };
+}
+
+function deleteOstNode(node, nodeId) {
+  if (!node?.children?.length) {
+    return { node, deleted: false };
+  }
+
+  let deleted = false;
+  const children = [];
+
+  for (const child of node.children) {
+    if (child.id === nodeId) {
+      deleted = true;
+      continue;
+    }
+
+    const result = deleteOstNode(child, nodeId);
+    if (result.deleted) {
+      deleted = true;
+    }
+    children.push(result.node);
+  }
+
+  if (!deleted) {
+    return { node, deleted: false };
+  }
+
+  return {
+    node: {
+      ...node,
+      children,
+    },
+    deleted: true,
+  };
 }
 
 function getNicheProfileId(niche) {
@@ -4804,6 +4967,34 @@ function IdeasView({ data, addItem, updateItem, deleteItem, update, openNicheHom
     setActiveIdeaId(nextIdea.id);
   };
 
+  const createIdeaFromOstNode = useCallback(
+    async (node) => {
+      const title = (node?.title || OST_NODE_LABELS[node?.type] || "New Idea").trim();
+      const now = new Date().toISOString();
+      const nextIdea = {
+        id: generateIdeaId(),
+        title,
+        niche: "",
+        trend: "",
+        keywords: [],
+        briefIds: [],
+        platform: "Amazon Merch",
+        status: "backlog",
+        notesHtml: ostNotesToHtml(node?.notes || ""),
+        updatedAt: now,
+        createdAt: now,
+      };
+
+      await addItem("ideas", nextIdea);
+      setActiveIdeaId(nextIdea.id);
+      setCelebration({
+        title,
+        message: "Added to the Backlog column from your Opportunity Solution Tree.",
+      });
+    },
+    [addItem]
+  );
+
   const moveIdea = useCallback(
     async (ideaId, nextStatus) => {
       const idea = ideas.find((item) => item.id === ideaId);
@@ -5087,6 +5278,12 @@ function IdeasView({ data, addItem, updateItem, deleteItem, update, openNicheHom
           );
         })}
       </div>
+
+      <OpportunityTreeWorkspace
+        trees={data.opportunityTrees || []}
+        onSave={(nextTrees) => update("opportunityTrees", nextTrees)}
+        onAddNodeToBacklog={createIdeaFromOstNode}
+      />
 
       {activeIdea && editorDraft && (
         <>
@@ -5446,6 +5643,504 @@ function IdeasView({ data, addItem, updateItem, deleteItem, update, openNicheHom
 }
 
 // ─── NICHE HOME VIEW ───────────────────────────
+function OpportunityTreeWorkspace({ trees, onSave, onAddNodeToBacklog }) {
+  const [draftTrees, setDraftTrees] = useState(trees || []);
+  const [activeTreeId, setActiveTreeId] = useState(() => trees?.[0]?.id || null);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const lastSavedSnapshot = useRef(JSON.stringify(trees || []));
+
+  useEffect(() => {
+    const incoming = trees || [];
+    const serialized = JSON.stringify(incoming);
+    lastSavedSnapshot.current = serialized;
+    setDraftTrees((prev) => (JSON.stringify(prev) === serialized ? prev : incoming));
+    setActiveTreeId((prev) => {
+      if (prev && incoming.some((tree) => tree.id === prev)) {
+        return prev;
+      }
+      return incoming[0]?.id || null;
+    });
+  }, [trees]);
+
+  useEffect(() => {
+    const serialized = JSON.stringify(draftTrees);
+    if (serialized === lastSavedSnapshot.current) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(async () => {
+      lastSavedSnapshot.current = serialized;
+      await onSave(draftTrees);
+    }, 350);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [draftTrees, onSave]);
+
+  const mutateTrees = useCallback((updater) => {
+    setDraftTrees((prev) => updater(prev));
+  }, []);
+
+  const createTree = useCallback(() => {
+    const title = window.prompt("Name this Opportunity Solution Tree", `OST ${draftTrees.length + 1}`);
+    if (title === null) return;
+
+    const nextTree = createOpportunityTree(title.trim() || `OST ${draftTrees.length + 1}`);
+    mutateTrees((prev) => [...prev, nextTree]);
+    setActiveTreeId(nextTree.id);
+  }, [draftTrees.length, mutateTrees]);
+
+  const updateTreeMeta = useCallback((treeId, updates) => {
+    mutateTrees((prev) =>
+      prev.map((tree) =>
+        tree.id === treeId
+          ? {
+              ...tree,
+              ...updates,
+              updatedAt: new Date().toISOString(),
+            }
+          : tree
+      )
+    );
+  }, [mutateTrees]);
+
+  const updateNode = useCallback((treeId, nodeId, updater) => {
+    mutateTrees((prev) =>
+      prev.map((tree) => {
+        if (tree.id !== treeId) return tree;
+        const result = updateOstNode(tree.outcome, nodeId, updater);
+        if (!result.updated) return tree;
+
+        return {
+          ...tree,
+          outcome: result.node,
+          updatedAt: new Date().toISOString(),
+        };
+      })
+    );
+  }, [mutateTrees]);
+
+  const addChildNode = useCallback((treeId, nodeId, type) => {
+    updateNode(treeId, nodeId, (node) => ({
+      ...node,
+      children: [...(node.children || []), createOstNode(type)],
+    }));
+  }, [updateNode]);
+
+  const deleteNode = useCallback((treeId, node) => {
+    const descendants = countOstDescendants(node);
+    const warning = descendants
+      ? `Delete "${node.title || OST_NODE_LABELS[node.type]}" and its ${descendants} child node${descendants === 1 ? "" : "s"}?`
+      : `Delete "${node.title || OST_NODE_LABELS[node.type]}"?`;
+
+    if (!window.confirm(warning)) {
+      return;
+    }
+
+    mutateTrees((prev) =>
+      prev.map((tree) => {
+        if (tree.id !== treeId) return tree;
+        const result = deleteOstNode(tree.outcome, node.id);
+        if (!result.deleted) return tree;
+
+        return {
+          ...tree,
+          outcome: result.node,
+          updatedAt: new Date().toISOString(),
+        };
+      })
+    );
+  }, [mutateTrees]);
+
+  const deleteTree = useCallback((tree) => {
+    const descendants = countOstDescendants(tree.outcome);
+    const warning = descendants
+      ? `Delete "${tree.title}" and all ${descendants + 1} nodes in this tree?`
+      : `Delete "${tree.title}"?`;
+
+    if (!window.confirm(warning)) {
+      return;
+    }
+
+    mutateTrees((prev) => prev.filter((item) => item.id !== tree.id));
+    setActiveTreeId((prev) => (prev === tree.id ? null : prev));
+  }, [mutateTrees]);
+
+  const copyNodeToTree = useCallback((sourceTreeId, node, targetTreeId) => {
+    if (!targetTreeId || targetTreeId === sourceTreeId) return;
+
+    const cloned = cloneOstNode(node);
+    mutateTrees((prev) =>
+      prev.map((tree) => {
+        if (tree.id !== targetTreeId) return tree;
+
+        return {
+          ...tree,
+          outcome: {
+            ...tree.outcome,
+            children: [...(tree.outcome.children || []), cloned],
+          },
+          updatedAt: new Date().toISOString(),
+        };
+      })
+    );
+  }, [mutateTrees]);
+
+  return (
+    <section style={{ marginTop: 34 }}>
+      <div
+        style={{
+          background: "linear-gradient(135deg, rgba(15,23,42,0.96), rgba(17,24,39,0.92))",
+          border: `1px solid ${C.border}`,
+          borderRadius: 18,
+          padding: 22,
+          boxShadow: "0 18px 42px rgba(0,0,0,0.22)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontFamily: font, color: C.accent, fontSize: 13, textTransform: "uppercase", letterSpacing: 1.2 }}>
+              Opportunity Solution Trees
+            </div>
+            <h2 style={{ margin: "6px 0 6px", fontSize: 28, color: C.white, fontFamily: sansFont }}>
+              Explore outcomes, opportunities, and experiments without leaving Ideas
+            </h2>
+            <p style={{ margin: 0, maxWidth: 780, color: C.textDim, fontSize: 15, lineHeight: 1.6 }}>
+              Keep one OST open at a time, map the path from the customer outcome to concrete tests, and capture notes directly on every node.
+            </p>
+          </div>
+          <Btn onClick={createTree}>+ New OST</Btn>
+        </div>
+
+        <div style={{ marginTop: 18, border: `1px solid ${C.border}`, borderRadius: 14, background: "rgba(255,255,255,0.02)" }}>
+          <button
+            type="button"
+            onClick={() => setGuideOpen((prev) => !prev)}
+            style={{
+              width: "100%",
+              border: "none",
+              background: "transparent",
+              color: C.text,
+              fontFamily: font,
+              padding: "14px 16px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              cursor: "pointer",
+              fontSize: 14,
+            }}
+          >
+            <span>How to use this workspace</span>
+            <span style={{ color: C.textMuted }}>{guideOpen ? "Hide guide" : "Show guide"}</span>
+          </button>
+          {guideOpen && (
+            <div style={{ padding: "0 16px 16px", color: C.textDim, fontSize: 14, lineHeight: 1.7 }}>
+              <div>1. Start each OST with a single desired outcome.</div>
+              <div>2. Break that into customer opportunities, then attach solutions and experiments underneath.</div>
+              <div>3. Use notes on every node for evidence, customer quotes, risks, or next steps.</div>
+              <div>4. Deleting a node will also delete its children, and the app warns before doing that.</div>
+              <div>5. If you have multiple OSTs, you can copy a subtree into another tree to reuse the work.</div>
+            </div>
+          )}
+        </div>
+
+        {!draftTrees.length ? (
+          <div
+            style={{
+              marginTop: 20,
+              padding: 28,
+              borderRadius: 16,
+              border: `1px dashed ${C.borderLight}`,
+              textAlign: "center",
+              color: C.textMuted,
+              background: "rgba(255,255,255,0.02)",
+            }}
+          >
+            Create your first OST to start linking product outcomes to customer opportunities and experiments.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 14, marginTop: 20 }}>
+            {draftTrees.map((tree) => {
+              const isOpen = activeTreeId === tree.id;
+              const counts = countOstNodesByType(tree.outcome, {});
+
+              return (
+                <div
+                  key={tree.id}
+                  style={{
+                    border: `1px solid ${isOpen ? C.borderLight : C.border}`,
+                    borderRadius: 16,
+                    overflow: "hidden",
+                    background: isOpen ? "rgba(15,23,42,0.78)" : "rgba(255,255,255,0.02)",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setActiveTreeId((prev) => (prev === tree.id ? null : tree.id))}
+                    style={{
+                      width: "100%",
+                      border: "none",
+                      background: "transparent",
+                      color: C.text,
+                      padding: "16px 18px",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 14,
+                      cursor: "pointer",
+                      textAlign: "left",
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: C.white }}>{tree.title || "Untitled OST"}</div>
+                      <div style={{ color: C.textMuted, fontSize: 13, marginTop: 4 }}>
+                        {counts.opportunity || 0} opportunities · {counts.solution || 0} solutions · {counts.experiment || 0} experiments
+                      </div>
+                    </div>
+                    <span style={{ color: C.textMuted }}>{isOpen ? "−" : "+"}</span>
+                  </button>
+
+                  {isOpen && (
+                    <div style={{ padding: "0 18px 18px" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 12,
+                          alignItems: "center",
+                          flexWrap: "wrap",
+                          padding: "12px 0 18px",
+                          borderTop: `1px solid ${C.border}`,
+                        }}
+                      >
+                        <Input
+                          value={tree.title || ""}
+                          onChange={(value) => updateTreeMeta(tree.id, { title: value })}
+                          placeholder="OST title"
+                          style={{ minWidth: 260, flex: "1 1 320px" }}
+                        />
+                        <Btn variant="danger" onClick={() => deleteTree(tree)}>
+                          Delete OST
+                        </Btn>
+                      </div>
+
+                      <div
+                        style={{
+                          overflowX: "auto",
+                          paddingBottom: 8,
+                          borderRadius: 14,
+                          background: "rgba(2,6,23,0.45)",
+                          border: `1px solid ${C.border}`,
+                        }}
+                      >
+                        <div style={{ minWidth: 1040, padding: 18 }}>
+                          <OstTreeNode
+                            node={tree.outcome}
+                            treeId={tree.id}
+                            allTrees={draftTrees}
+                            isRoot
+                            onNodeChange={updateNode}
+                            onAddChild={addChildNode}
+                            onDeleteNode={deleteNode}
+                            onCopyNode={copyNodeToTree}
+                            onAddToBacklog={onAddNodeToBacklog}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function OstTreeNode({
+  node,
+  treeId,
+  allTrees,
+  isRoot = false,
+  onNodeChange,
+  onAddChild,
+  onDeleteNode,
+  onCopyNode,
+  onAddToBacklog,
+}) {
+  const [copyTargetTreeId, setCopyTargetTreeId] = useState("");
+  const palette = OST_NODE_COLORS[node.type] || OST_NODE_COLORS.opportunity;
+  const childOptions = OST_CHILD_OPTIONS[node.type] || [];
+  const siblingTrees = allTrees.filter((tree) => tree.id !== treeId);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+      <div
+        style={{
+          width: isRoot ? 320 : 280,
+          maxWidth: "100%",
+          background: palette.background,
+          border: `1px solid ${palette.border}`,
+          borderRadius: 16,
+          padding: 14,
+          boxShadow: "0 16px 30px rgba(0,0,0,0.16)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 10 }}>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "4px 10px",
+              borderRadius: 999,
+              background: palette.chip,
+              color: "#fff",
+              fontSize: 12,
+              fontWeight: 700,
+              letterSpacing: 0.6,
+              textTransform: "uppercase",
+            }}
+          >
+            {OST_NODE_LABELS[node.type]}
+          </span>
+          {!isRoot && (
+            <button
+              type="button"
+              onClick={() => onDeleteNode(treeId, node)}
+              style={{
+                border: "none",
+                background: "transparent",
+                color: "#fca5a5",
+                cursor: "pointer",
+                fontSize: 13,
+                fontFamily: font,
+              }}
+            >
+              Delete
+            </button>
+          )}
+        </div>
+
+        <Input
+          value={node.title || ""}
+          onChange={(value) => onNodeChange(treeId, node.id, (current) => ({ ...current, title: value }))}
+          placeholder={`${OST_NODE_LABELS[node.type]} title`}
+          style={{ width: "100%", marginBottom: 10, background: "rgba(255,255,255,0.92)", color: "#0f172a" }}
+        />
+
+        <textarea
+          value={node.notes || ""}
+          onChange={(event) =>
+            onNodeChange(treeId, node.id, (current) => ({ ...current, notes: event.target.value }))
+          }
+          placeholder="Notes, evidence, insights, risks, or open questions..."
+          style={{
+            width: "100%",
+            minHeight: 96,
+            resize: "vertical",
+            borderRadius: 12,
+            border: `1px solid ${palette.border}`,
+            background: "rgba(255,255,255,0.9)",
+            color: "#0f172a",
+            padding: 12,
+            fontFamily: sansFont,
+            fontSize: 14,
+            lineHeight: 1.5,
+            outline: "none",
+          }}
+        />
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+          <Btn
+            variant="ghost"
+            onClick={() => onAddToBacklog(node)}
+            style={{ fontSize: 12, padding: "7px 10px" }}
+          >
+            + Add to Idea Backlog
+          </Btn>
+          {childOptions.map((type) => (
+            <Btn
+              key={type}
+              variant="ghost"
+              onClick={() => onAddChild(treeId, node.id, type)}
+              style={{ fontSize: 12, padding: "7px 10px" }}
+            >
+              + {OST_NODE_LABELS[type]}
+            </Btn>
+          ))}
+        </div>
+
+        {!isRoot && siblingTrees.length > 0 && (
+          <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <select
+              value={copyTargetTreeId}
+              onChange={(event) => setCopyTargetTreeId(event.target.value)}
+              style={{
+                minWidth: 170,
+                background: "rgba(15,23,42,0.9)",
+                color: C.text,
+                border: `1px solid ${C.border}`,
+                borderRadius: 8,
+                padding: "9px 10px",
+                fontFamily: font,
+              }}
+            >
+              <option value="">Copy subtree to...</option>
+              {siblingTrees.map((tree) => (
+                <option key={tree.id} value={tree.id}>
+                  {tree.title}
+                </option>
+              ))}
+            </select>
+            <Btn
+              variant="ghost"
+              onClick={() => {
+                if (!copyTargetTreeId) return;
+                onCopyNode(treeId, node, copyTargetTreeId);
+                setCopyTargetTreeId("");
+              }}
+              disabled={!copyTargetTreeId}
+              style={{ fontSize: 12, padding: "7px 10px" }}
+            >
+              Copy subtree
+            </Btn>
+          </div>
+        )}
+      </div>
+
+      {!!node.children?.length && (
+        <>
+          <div style={{ width: 2, height: 24, background: C.borderLight }} />
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "center",
+              gap: 18,
+              width: "100%",
+              flexWrap: "nowrap",
+            }}
+          >
+            {node.children.map((child) => (
+              <OstTreeNode
+                key={child.id}
+                node={child}
+                treeId={treeId}
+                allTrees={allTrees}
+                onNodeChange={onNodeChange}
+                onAddChild={onAddChild}
+                onDeleteNode={onDeleteNode}
+                onCopyNode={onCopyNode}
+                onAddToBacklog={onAddToBacklog}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function NicheHomeView({
   data,
   selectedNicheContext,

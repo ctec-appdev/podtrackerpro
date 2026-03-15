@@ -1946,21 +1946,29 @@ export default function PODTracker() {
 
   return (
     <div style={{ background: C.bg, minHeight: "100vh", display: "flex", fontFamily: sansFont, color: C.text }}>
-      <nav
+      <div
         style={{
           width: isSidebarCollapsed ? 72 : 200,
+          flexShrink: 0,
+          position: "sticky",
+          top: 0,
+          height: "100vh",
+          overflow: "visible",
+          transition: "width 0.18s ease",
+          zIndex: 5,
+        }}
+      >
+      <nav
+        style={{
+          width: "100%",
           background: C.surface,
           borderRight: `1px solid ${C.border}`,
           padding: "16px 0",
           display: "flex",
           flexDirection: "column",
-          flexShrink: 0,
-          position: "sticky",
-          top: 0,
           height: "100vh",
           overflowY: "auto",
           overflowX: "hidden",
-          transition: "width 0.18s ease",
         }}
       >
         <div
@@ -1970,7 +1978,7 @@ export default function PODTracker() {
             marginBottom: 8,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: isSidebarCollapsed ? "center" : "space-between", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
             <Image
               src="/podtrackerpro-logo.png"
               alt="PODTrackerPro"
@@ -1999,6 +2007,7 @@ export default function PODTracker() {
                   cursor: "pointer",
                   fontFamily: font,
                   flexShrink: 0,
+                  display: "none",
                 }}
               >
                 ←
@@ -2018,8 +2027,8 @@ export default function PODTracker() {
                 height: 28,
                 cursor: "pointer",
                 fontFamily: font,
-                display: "block",
                 margin: "10px auto 0",
+                display: "none",
               }}
             >
               →
@@ -2146,6 +2155,33 @@ export default function PODTracker() {
           {isSidebarCollapsed ? `${data.niches.length}/${data.inventory.length}` : `${data.niches.length} niches · ${data.inventory.length} listings`}
         </div>
       </nav>
+      <button
+        onClick={() => setIsSidebarCollapsed((prev) => !prev)}
+        aria-label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        style={{
+          position: "absolute",
+          top: "50%",
+          right: -14,
+          transform: "translateY(-50%)",
+          width: 28,
+          height: 72,
+          border: `1px solid ${C.border}`,
+          borderLeft: "none",
+          borderRadius: "0 10px 10px 0",
+          background: C.card,
+          color: C.textDim,
+          cursor: "pointer",
+          fontFamily: font,
+          fontSize: 16,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          boxShadow: "0 6px 18px rgba(0, 0, 0, 0.28)",
+        }}
+      >
+        {isSidebarCollapsed ? ">" : "<"}
+      </button>
+      </div>
 
       <main style={{ flex: 1, padding: 32, overflowY: "auto", maxHeight: "100vh" }}>
         {tab === "dashboard" && <DashboardView data={data} setTab={setTab} plan={plan} usage={usage} />}

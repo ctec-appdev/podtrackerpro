@@ -502,8 +502,17 @@ function csvEscape(value) {
   return str;
 }
 
+function formatCSVHeaderLabel(column) {
+  return String(column)
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
 function rowsToCSV(rows, columns) {
-  const headerLine = columns.map(csvEscape).join(",");
+  const headerLine = columns.map((column) => csvEscape(formatCSVHeaderLabel(column))).join(",");
   const bodyLines = rows.map((row) => columns.map((col) => csvEscape(row[col])).join(","));
   return [headerLine, ...bodyLines].join("\n");
 }

@@ -46,6 +46,7 @@ const STORAGE = {
   ideas: "pod-dash-ideas",
   opportunityTrees: "pod-dash-opportunity-trees",
   customNiches: "pod-dash-custom-niches",
+  customDates: "pod-dash-custom-dates",
   nicheProfiles: "pod-dash-niche-profiles",
   inventory: "pod-dash-inventory",
   performance: "pod-dash-perf",
@@ -60,6 +61,7 @@ const EMPTY_TRACKER_DATA = {
   ideas: [],
   opportunityTrees: [],
   customNiches: [],
+  customDates: [],
   nicheProfiles: [],
   inventory: [],
   performance: [],
@@ -105,6 +107,8 @@ const BOTTOM_TABS = [
   { id: "improve-ptp", label: "Improve PTP", icon: "+" },
 ];
 
+TABS[1]?.children?.splice(2, 0, { id: "dates", label: "Dates", icon: "#" });
+
 const VALID_TAB_IDS = new Set([
   "dashboard",
   "niche-home",
@@ -121,7 +125,123 @@ const VALID_TAB_IDS = new Set([
   "guide",
 ]);
 
+VALID_TAB_IDS.add("dates");
+
 const CANNY_BOARD_URL = "https://podtrackerpro.canny.io/feature-requests";
+
+const MONTH_TO_INDEX = {
+  January: 0,
+  February: 1,
+  March: 2,
+  April: 3,
+  May: 4,
+  June: 5,
+  July: 6,
+  August: 7,
+  September: 8,
+  October: 9,
+  November: 10,
+  December: 11,
+};
+
+const DATE_KPI_WINDOWS = [30, 60, 90];
+
+const POD_DATES_SOURCE = `
+January|1|holiday|New Year's Day|Resolutions, fireworks, fresh starts
+January|2|niche|National Science Fiction Day|Sci-fi quotes, aliens, spaceships
+January|13|niche|National Sticker Day|Sticker pack themes, fun decals
+January|15|niche|National Hat Day|Hat lover graphics, custom beanies
+January|21|niche|National Cheesy Socks Day|Punny socks, cozy feet art
+January|23|niche|National Pie Day|Pie slices, baking humor
+January|24|niche|National Compliment Day|Positive vibes quotes
+February|2|holiday|Groundhog Day|Punxsutawney Phil, weather jokes
+February|6|niche|National Wear Red Day|Heart health, red-themed apparel
+February|9|niche|National Pizza Day|Pizza slices, foodie tees
+February|13|holiday|Galentine's Day|Girls' night, friendship sets
+February|14|holiday|Valentine's Day|Romance, couples matching
+February|15|niche|Singles Awareness Day|Single pride, funny anti-Valentine
+February|27|niche|National Retro Day|Vintage styles, 80s/90s nostalgia
+March|4|niche|National Grammar Day|Wordplay, bookish puns
+March|6|niche|National Dress Up Day|Costume fun, fancy outfits
+March|14|niche|National Pi Day|Math pies, geek humor
+March|17|holiday|St. Patrick's Day|Shamrocks, leprechauns
+March|19|niche|Let's Laugh Day|Jokes, comedy quotes
+March|20|niche|International Day of Happiness|Smile faces, joy motifs
+March|24|niche|International Cash Mob Day|Money fun, shopping vibes
+April|1|holiday|April Fools' Day|Prank graphics, silly faces
+April|5|holiday|Easter Sunday|Bunnies, eggs, pastels
+April|11|niche|National Pet Day|Pet portraits, animal lovers
+April|14|niche|National Gardening Day|Plants, flowers
+April|22|holiday|Earth Day|Eco-friendly, nature scenes
+April|23|niche|World Book Day|Reading quotes, literary designs
+April|29|niche|International Dance Day|Dance poses, music fest themes
+May|4|niche|Star Wars Day|"May the 4th", Jedi art
+May|11|holiday|Mother's Day|Mom appreciation, florals
+May|16|niche|National Love a Tree Day|Tree hugger designs
+May|25|niche|National Wine Day|Wine glass humor
+May|30|niche|National Creativity Day|Artist vibes, DIY merch
+May|31|niche|National Smile Day|Happy faces, grins
+June|5|niche|World Environment Day|Green earth themes
+June|6|niche|National Doughnut Day|Donut puns, sweets
+June|8|niche|Best Friends Day|BFF matching merch
+June|15|holiday|Father's Day|Dad jokes, grilling themes
+June|21|niche|International Yoga Day|Yoga poses, zen art
+June|21|niche|National Selfie Day|Selfie frames, social humor
+June|21|niche|International T-Shirt Day|Tee lover prints
+July|4|holiday|Independence Day (US)|Patriotic, flags, fireworks
+July|5|niche|National Bikini Day|Beachwear, summer looks
+July|7|niche|World Chocolate Day|Chocolate art, sweet puns
+July|17|niche|World Emoji Day|Emoji mashups, expression themes
+July|19|niche|National Ice Cream Day|Scoops, cones, frozen treats
+July|20|niche|National Moon Day|Space, astronauts, lunar themes
+July|30|niche|International Day of Friendship|Friend quotes, matching sets
+August|8|niche|International Cat Day|Cat memes, feline humor
+August|9|niche|National Book Lovers Day|Book stacks, reader pride
+August|10|niche|National Lazy Day|Couch potato, nap club graphics
+August|16|niche|National Tell a Joke Day|Pun central, comedy merch
+August|19|niche|World Photography Day|Camera motifs, creative shoots
+August|26|niche|International Dog Day|Dog breeds, pup love
+September|7|holiday|Labor Day (US)|Workers pride, job-site humor
+September|8|niche|International Literacy Day|Reading passion, classroom vibes
+September|12|niche|National Video Games Day|Gamer gear, retro controls
+September|13|holiday|National Grandparents Day|Grandparent love, family pride
+September|21|niche|International Day of Peace|Peace signs, calm motifs
+September|27|niche|World Tourism Day|Travel vibes, passport art
+October|1|niche|International Coffee Day|Coffee quotes, cafe culture
+October|3|niche|World Smile Day|Grins galore, feel-good art
+October|4|niche|World Animal Welfare Day|Animal rescue, compassion themes
+October|5|niche|World Teachers' Day|Teacher thanks, classroom humor
+October|10|niche|World Mental Health Day|Awareness ribbons, support themes
+October|16|niche|Boss's Day|Boss humor, workplace jokes
+October|31|holiday|Halloween|Spooky, costumes, pumpkins
+November|1|niche|World Vegan Day|Plant-based merch
+November|11|holiday|Veterans Day (US)|Patriotic vets, service pride
+November|19|niche|International Men's Day|Men's themes, positivity
+November|26/27|holiday|Thanksgiving|Turkey, gratitude, family dinner
+November|27/28|holiday|Black Friday|Deals hype, shopping frenzy
+November|30|holiday|Cyber Monday|Online shopper, digital deals
+December|1|holiday|Cyber Monday (alt date)|Digital sales, ecommerce humor
+December|4|niche|National Sock Day|Sock patterns, cozy feet
+December|14|niche|National Free Shipping Day|Shipping fun, ecommerce jokes
+December|25|holiday|Christmas|Santa, trees, festive cheer
+December|31|holiday|New Year's Eve|Countdown, party themes
+`;
+
+const POD_DATES = POD_DATES_SOURCE.trim().split("\n").map((line, index) => {
+  const [month, rawDay, type, event, ideas] = line.split("|");
+  const dayNumber = Number(String(rawDay).split("/")[0]);
+
+  return {
+    id: `pod-date-${index + 1}`,
+    month,
+    monthIndex: MONTH_TO_INDEX[month],
+    rawDay,
+    dayNumber,
+    type,
+    event,
+    ideas,
+  };
+});
 
 const IDEA_COLUMNS = [
   {
@@ -2823,6 +2943,7 @@ export default function PODTracker() {
             openNicheHome={openNicheHome}
           />
         )}
+        {tab === "dates" && <DatesView data={data} setTab={setTab} update={update} />}
         {tab === "trends" && (
           <TrendsView
             data={data}
@@ -4523,7 +4644,7 @@ function buildNicheOpportunityPoints(data) {
 }
 
 function buildPlatformDistribution(data) {
-  const platformOrder = ["Amazon Merch", "Etsy", "Redbubble", "TeeSpring/Spring"];
+  const platformOrder = [...PLATFORMS];
   const aliasMap = {
     Spring: "TeeSpring/Spring",
     TeeSpring: "TeeSpring/Spring",
@@ -4547,8 +4668,607 @@ function buildPlatformDistribution(data) {
   }));
 }
 
+function buildUpcomingDateRows(referenceDate = new Date(), customDates = []) {
+  const today = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), referenceDate.getDate());
+  const dateItems = [
+    ...POD_DATES.map((item) => ({ ...item, source: "built-in" })),
+    ...(customDates || []).map((item, index) => ({
+      id: item.id || `custom-date-${index + 1}`,
+      month: item.month,
+      monthIndex: MONTH_TO_INDEX[item.month],
+      rawDay: item.rawDay,
+      dayNumber: Number(String(item.rawDay).split("/")[0]),
+      type: item.type,
+      event: item.event,
+      ideas: item.ideas,
+      niche: item.niche || "",
+      source: "custom",
+    })),
+  ];
+
+  return dateItems.map((item) => {
+    let nextOccurrence = new Date(today.getFullYear(), item.monthIndex, item.dayNumber);
+    if (nextOccurrence < today) {
+      nextOccurrence = new Date(today.getFullYear() + 1, item.monthIndex, item.dayNumber);
+    }
+
+    const daysAway = Math.round((nextOccurrence - today) / (1000 * 60 * 60 * 24));
+
+    return {
+      ...item,
+      typeLabel: item.type === "holiday" ? "Holiday" : "Niche Day",
+      dateLabel: `${item.month} ${item.rawDay}`,
+      sourceLabel: item.source === "custom" ? "Custom" : "Built-in",
+      sortDate: nextOccurrence,
+      sortTime: nextOccurrence.getTime(),
+      daysAway,
+      daysAwayLabel: daysAway === 0 ? "Today" : daysAway === 1 ? "1 day away" : `${daysAway} days away`,
+    };
+  }).sort((left, right) => left.sortTime - right.sortTime || left.event.localeCompare(right.event));
+}
+
+function normalizeLookupText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getLookupTerms(dateItem) {
+  const parts = [dateItem.event, dateItem.ideas, dateItem.month];
+  const tokens = normalizeLookupText(parts.join(" "))
+    .split(" ")
+    .filter((token) => token.length >= 4);
+
+  return Array.from(new Set(tokens));
+}
+
+function itemMatchesLookup(text, terms) {
+  const haystack = normalizeLookupText(text);
+  return terms.some((term) => haystack.includes(term));
+}
+
+function buildDateConnections(dateItem, data) {
+  const terms = getLookupTerms(dateItem);
+
+  const keywords = (data?.keywords || []).filter((item) =>
+    itemMatchesLookup([item.keyword, item.niche, item.subNiche, item.platforms].join(" "), terms)
+  );
+
+  const trends = (data?.trends || []).filter((item) =>
+    itemMatchesLookup([item.trend, item.category, item.notes, item.peakMonths, item.source].join(" "), terms)
+  );
+
+  const niches = Array.from(
+    new Set(
+      [
+        dateItem.niche,
+        ...keywords.map((item) => normalizeNicheOptionLabel(item?.niche)).filter(Boolean),
+      ].filter(Boolean)
+    )
+  ).sort();
+
+  return { keywords, trends, niches };
+}
+
+function DatesView({ data, setTab, update }) {
+  const [selectedWindowDays, setSelectedWindowDays] = useState(90);
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [nicheFilter, setNicheFilter] = useState("all");
+  const [selectedDateId, setSelectedDateId] = useState(null);
+  const [customForm, setCustomForm] = useState({
+    month: "January",
+    rawDay: "",
+    type: "niche",
+    event: "",
+    ideas: "",
+    niche: "",
+  });
+  const tableRef = useRef(null);
+
+  const customNicheOptions = useMemo(
+    () =>
+      Array.from(
+        new Set((data?.customNiches || []).map((item) => normalizeNicheOptionLabel(item)).filter(Boolean))
+      ).sort(),
+    [data?.customNiches]
+  );
+
+  const nicheOptions = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...DEFAULT_NICHE_OPTIONS,
+          ...(data?.niches || []).map((item) => normalizeNicheOptionLabel(item?.niche)).filter(Boolean),
+          ...customNicheOptions,
+        ])
+      ).sort(),
+    [customNicheOptions, data?.niches]
+  );
+
+  const upcomingDates = useMemo(
+    () => buildUpcomingDateRows(new Date(), data?.customDates || []),
+    [data?.customDates]
+  );
+  const connectedDates = useMemo(
+    () =>
+      upcomingDates.map((item) => ({
+        ...item,
+        connections: buildDateConnections(item, data),
+      })),
+    [data, upcomingDates]
+  );
+
+  const countsByWindow = useMemo(
+    () =>
+      DATE_KPI_WINDOWS.map((days) => {
+        const items = connectedDates.filter((item) => item.daysAway <= days);
+        return {
+          days,
+          total: items.length,
+          holidays: items.filter((item) => item.type === "holiday").length,
+          nicheDays: items.filter((item) => item.type === "niche").length,
+        };
+      }),
+    [connectedDates]
+  );
+
+  const filteredRows = useMemo(() => {
+    return connectedDates.filter((item) => {
+      const matchesWindow = selectedWindowDays ? item.daysAway <= selectedWindowDays : true;
+      const matchesType = typeFilter === "all" ? true : item.type === typeFilter;
+      const matchesNiche =
+        nicheFilter === "all"
+          ? true
+          : (item.connections?.niches || []).some(
+              (niche) => normalizeNicheOptionLabel(niche) === normalizeNicheOptionLabel(nicheFilter)
+            );
+      return matchesWindow && matchesType && matchesNiche;
+    });
+  }, [connectedDates, nicheFilter, selectedWindowDays, typeFilter]);
+
+  const activeSummary = countsByWindow.find((item) => item.days === selectedWindowDays);
+  const selectedDate = filteredRows.find((item) => item.id === selectedDateId) || null;
+
+  const jumpToTable = (days) => {
+    setSelectedWindowDays(days);
+    tableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const addCustomDate = async () => {
+    if (!customForm.rawDay.trim() || !customForm.event.trim()) {
+      alert("Add at least a date and event name.");
+      return;
+    }
+
+    const nextCustomDates = [
+      ...(data?.customDates || []),
+        {
+          id: generateTrackerId("custom-date"),
+          month: customForm.month,
+          rawDay: customForm.rawDay.trim(),
+          type: customForm.type,
+          event: customForm.event.trim(),
+          ideas: customForm.ideas.trim(),
+          niche: customForm.niche.trim(),
+        },
+      ];
+
+    await update("customDates", nextCustomDates);
+    setCustomForm({
+      month: "January",
+      rawDay: "",
+      type: "niche",
+      event: "",
+      ideas: "",
+      niche: "",
+    });
+  };
+
+  const deleteCustomDate = async (index) => {
+    const nextCustomDates = (data?.customDates || []).filter((_, itemIndex) => itemIndex !== index);
+    await update("customDates", nextCustomDates);
+  };
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <div
+        style={{
+          background: C.card,
+          border: `1px solid ${C.border}`,
+          borderRadius: 10,
+          padding: 20,
+        }}
+      >
+        <div style={{ display: "grid", gap: 6 }}>
+          <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".16em", color: C.muted }}>Research Dates</div>
+          <h1 style={{ margin: 0, fontSize: 27, fontWeight: 700, fontFamily: sansFont }}>Dates</h1>
+          <div style={{ color: C.textDim, fontSize: 16 }}>
+            Track holiday moments and niche call-out dates without starting in calendar mode.
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+        {countsByWindow.map((item) => {
+          const isActive = selectedWindowDays === item.days;
+          return (
+            <div
+              key={item.days}
+              style={{
+                background: C.card,
+                border: `1px solid ${isActive ? C.accent : C.border}`,
+                borderRadius: 10,
+                padding: 18,
+                borderTop: `2px solid ${isActive ? C.accent : C.border}`,
+                boxShadow: isActive ? "0 0 0 1px rgba(59, 130, 246, 0.18)" : "none",
+              }}
+            >
+              <div style={{ display: "grid", gap: 10 }}>
+                <div style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, color: C.textMuted }}>
+                  Next {item.days} Days
+                </div>
+                <button
+                  onClick={() => jumpToTable(item.days)}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: C.white,
+                    fontSize: 34,
+                    fontWeight: 800,
+                    padding: 0,
+                    textAlign: "left",
+                    cursor: "pointer",
+                    fontFamily: sansFont,
+                  }}
+                >
+                  {item.total}
+                </button>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Badge color="success">{item.holidays} holidays</Badge>
+                  <Badge color="accent">{item.nicheDays} niche days</Badge>
+                </div>
+                <div style={{ fontSize: 14, color: C.textDim }}>
+                  Click the number to filter the table to this time window.
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div
+        style={{
+          background: C.card,
+          border: `1px solid ${C.border}`,
+          borderRadius: 10,
+          padding: 18,
+          display: "grid",
+          gap: 14,
+        }}
+      >
+        <div style={{ display: "grid", gap: 6 }}>
+          <h2 style={{ margin: 0, fontSize: 22 }}>Add Custom Date</h2>
+          <div style={{ color: C.textDim, fontSize: 14 }}>
+            Add your own seasonal launch dates, niche anniversaries, or promo windows.
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 150px 1.2fr", gap: 12 }}>
+          <Select
+            value={customForm.month}
+            onChange={(value) => setCustomForm((prev) => ({ ...prev, month: value }))}
+            options={Object.keys(MONTH_TO_INDEX)}
+          />
+          <Input
+            value={customForm.rawDay}
+            onChange={(value) => setCustomForm((prev) => ({ ...prev, rawDay: value }))}
+            placeholder="Day"
+          />
+          <Select
+            value={customForm.type}
+            onChange={(value) => setCustomForm((prev) => ({ ...prev, type: value }))}
+            options={["holiday", "niche"]}
+          />
+          <Input
+            value={customForm.event}
+            onChange={(value) => setCustomForm((prev) => ({ ...prev, event: value }))}
+            placeholder="Event name"
+          />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 12, alignItems: "start" }}>
+          <Select
+            value={customForm.niche}
+            onChange={(value) => setCustomForm((prev) => ({ ...prev, niche: value }))}
+            options={nicheOptions}
+            placeholder="Related niche"
+          />
+          <Input
+            value={customForm.ideas}
+            onChange={(value) => setCustomForm((prev) => ({ ...prev, ideas: value }))}
+            placeholder="POD design ideas"
+          />
+          <Btn onClick={addCustomDate}>+ Add Custom Date</Btn>
+        </div>
+        {(data?.customDates || []).length > 0 && (
+          <div style={{ display: "grid", gap: 10 }}>
+            <div style={{ fontSize: 14, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>
+              Your Custom Dates
+            </div>
+            <Table
+              columns={[
+                { key: "month", label: "Month" },
+                { key: "rawDay", label: "Date" },
+                { key: "niche", label: "Niche", maxW: 180 },
+                {
+                  key: "type",
+                  label: "Type",
+                  render: (value) => (
+                    <Badge color={value === "holiday" ? "warn" : "accent"}>
+                      {value === "holiday" ? "Holiday" : "Niche Day"}
+                    </Badge>
+                  ),
+                },
+                { key: "event", label: "Event", maxW: 240 },
+                { key: "ideas", label: "Ideas", maxW: 260 },
+              ]}
+              data={data.customDates}
+              onDelete={(index) => deleteCustomDate(index)}
+            />
+          </div>
+        )}
+      </div>
+
+      <div
+        style={{
+          background: C.card,
+          border: `1px solid ${C.border}`,
+          borderRadius: 10,
+          padding: 18,
+          display: "grid",
+          gap: 14,
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ display: "grid", gap: 6 }}>
+            <h2 style={{ margin: 0, fontSize: 22 }}>Upcoming Call-Out Dates</h2>
+            <div style={{ color: C.textDim, fontSize: 14 }}>
+              Showing {filteredRows.length} item{filteredRows.length === 1 ? "" : "s"}
+              {activeSummary ? ` in the next ${activeSummary.days} days` : ""}.
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {[
+              { key: "all", label: "All" },
+              { key: "holiday", label: "Holidays" },
+              { key: "niche", label: "Niche Days" },
+            ].map((option) => {
+              const isActive = typeFilter === option.key;
+              return (
+                <button
+                  key={option.key}
+                  onClick={() => setTypeFilter(option.key)}
+                  style={{
+                    border: `1px solid ${isActive ? C.accent : C.border}`,
+                    background: isActive ? C.accentDim : C.surface,
+                    color: isActive ? C.white : C.textDim,
+                    borderRadius: 999,
+                    padding: "8px 12px",
+                    cursor: "pointer",
+                    fontSize: 13,
+                    fontFamily: font,
+                  }}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+            <FormControl size="small" sx={{ minWidth: 220 }}>
+              <MuiSelect value={nicheFilter} onChange={(event) => setNicheFilter(event.target.value)}>
+                <MenuItem value="all">All niches</MenuItem>
+                {nicheOptions.map((option) => (
+                  <MenuItem key={option} value={option}>
+                    {option}
+                  </MenuItem>
+                ))}
+              </MuiSelect>
+            </FormControl>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <Badge color="warn">{activeSummary?.holidays || 0} holidays in range</Badge>
+          <Badge color="accent">{activeSummary?.nicheDays || 0} niche days in range</Badge>
+          <Badge color="success">{filteredRows.length} rows visible</Badge>
+        </div>
+      </div>
+
+      {selectedDate && (
+        <div
+          style={{
+            background: C.card,
+            border: `1px solid ${C.border}`,
+            borderRadius: 10,
+            padding: 18,
+            display: "grid",
+            gap: 14,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ display: "grid", gap: 6 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <Badge color={selectedDate.type === "holiday" ? "warn" : "accent"}>
+                  {selectedDate.typeLabel}
+                </Badge>
+                <span style={{ color: C.textDim, fontSize: 14 }}>{selectedDate.dateLabel}</span>
+              </div>
+              <h3 style={{ margin: 0, fontSize: 22 }}>{selectedDate.event}</h3>
+              <div style={{ color: C.textDim, fontSize: 14 }}>{selectedDate.ideas}</div>
+            </div>
+            <Btn variant="ghost" onClick={() => setSelectedDateId(null)}>
+              Clear selection
+            </Btn>
+          </div>
+
+          <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
+            <div
+              style={{
+                background: C.surface,
+                border: `1px solid ${C.border}`,
+                borderRadius: 10,
+                padding: 16,
+                display: "grid",
+                gap: 10,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                <div style={{ fontSize: 16, fontWeight: 700 }}>Related Keywords</div>
+                <Btn variant="ghost" onClick={() => setTab("keywords")}>
+                  Open Keywords
+                </Btn>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {selectedDate.connections.keywords.length ? (
+                  selectedDate.connections.keywords.slice(0, 6).map((item, index) => (
+                    <Badge key={`${item.keyword}-${index}`} color="accent">
+                      {item.keyword}
+                    </Badge>
+                  ))
+                ) : (
+                  <span style={{ color: C.textDim, fontSize: 14 }}>No keyword matches yet.</span>
+                )}
+              </div>
+            </div>
+
+            <div
+              style={{
+                background: C.surface,
+                border: `1px solid ${C.border}`,
+                borderRadius: 10,
+                padding: 16,
+                display: "grid",
+                gap: 10,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                <div style={{ fontSize: 16, fontWeight: 700 }}>Related Trends</div>
+                <Btn variant="ghost" onClick={() => setTab("trends")}>
+                  Open Trends
+                </Btn>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {selectedDate.connections.trends.length ? (
+                  selectedDate.connections.trends.slice(0, 6).map((item, index) => (
+                    <Badge key={`${item.trend}-${index}`} color="success">
+                      {item.trend}
+                    </Badge>
+                  ))
+                ) : (
+                  <span style={{ color: C.textDim, fontSize: 14 }}>No trend matches yet.</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div ref={tableRef}>
+        <Table
+          columns={[
+            {
+              key: "typeLabel",
+              label: "Type",
+              filterOptions: ["Holiday", "Niche Day"],
+              render: (value, row) => (
+                <Badge color={row.type === "holiday" ? "warn" : "accent"}>{value}</Badge>
+              ),
+            },
+            {
+              key: "sourceLabel",
+              label: "Source",
+              render: (value, row) => (
+                <Badge color={row.source === "custom" ? "success" : "accent"}>{value}</Badge>
+              ),
+            },
+            {
+              key: "nicheTags",
+              label: "Niche",
+              maxW: 220,
+              render: (_, row) =>
+                row.connections?.niches?.length ? (
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {row.connections.niches.slice(0, 2).map((niche) => (
+                      <Badge key={niche} color="accent">{niche}</Badge>
+                    ))}
+                    {row.connections.niches.length > 2 && (
+                      <span style={{ color: C.textDim, fontSize: 13 }}>+{row.connections.niches.length - 2}</span>
+                    )}
+                  </div>
+                ) : (
+                  <span style={{ color: C.textDim }}>-</span>
+                ),
+            },
+            { key: "month", label: "Month", filterable: true },
+            { key: "rawDay", label: "Date" },
+            { key: "event", label: "Event", maxW: 260 },
+            {
+              key: "connections",
+              label: "Keywords",
+              render: (_, row) => (
+                <button
+                  onClick={() => setSelectedDateId(row.id)}
+                  style={{
+                    border: `1px solid ${C.border}`,
+                    background: C.surface,
+                    color: C.text,
+                    borderRadius: 999,
+                    padding: "6px 10px",
+                    cursor: "pointer",
+                    fontSize: 13,
+                    fontFamily: font,
+                  }}
+                >
+                  {row.connections.keywords.length} linked
+                </button>
+              ),
+            },
+            {
+              key: "trendConnections",
+              label: "Trends",
+              render: (_, row) => (
+                <button
+                  onClick={() => setSelectedDateId(row.id)}
+                  style={{
+                    border: `1px solid ${C.border}`,
+                    background: C.surface,
+                    color: C.text,
+                    borderRadius: 999,
+                    padding: "6px 10px",
+                    cursor: "pointer",
+                    fontSize: 13,
+                    fontFamily: font,
+                  }}
+                >
+                  {row.connections.trends.length} linked
+                </button>
+              ),
+            },
+            { key: "ideas", label: "POD Design Ideas", maxW: 320 },
+            {
+              key: "daysAway",
+              label: "Coming Up",
+              maxW: 150,
+              render: (_, row) => row.daysAwayLabel,
+            },
+          ]}
+          data={filteredRows}
+        />
+      </div>
+    </div>
+  );
+}
+
 function ReportsView({ data }) {
-  const [reportType, setReportType] = useState("items-added");
   const [filter, setFilter] = useState("all");
   const [granularity, setGranularity] = useState("day");
   const [matrixColorBy, setMatrixColorBy] = useState("status");
@@ -4594,67 +5314,61 @@ function ReportsView({ data }) {
           padding: 18,
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".16em", color: C.muted }}>Listings Reports</div>
-            <h2 style={{ margin: "8px 0 4px", fontSize: 24 }}>
-              {reportType === "items-added"
-                ? "Items Added"
-                : reportType === "niche-matrix"
-                  ? "Niche Opportunity Matrix"
-                  : "Platform Distribution"}
-            </h2>
-            <div style={{ color: C.muted }}>
-              {reportType === "items-added"
-                ? "Track how many new records were added by day, week, month, or year."
-                : reportType === "niche-matrix"
-                  ? "Compare demand versus competition to spot validated and emerging niche opportunities fast."
-                  : "See where the current listings portfolio is concentrated across your core selling platforms."}
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <FormControl size="small" sx={{ minWidth: 220 }}>
-              <MuiSelect value={reportType} onChange={(event) => setReportType(event.target.value)}>
-                <MenuItem value="items-added">Items Added</MenuItem>
-                <MenuItem value="niche-matrix">Niche Opportunity Matrix</MenuItem>
-                <MenuItem value="platform-distribution">Platform Distribution</MenuItem>
-              </MuiSelect>
-            </FormControl>
-            {reportType === "items-added" && (
-              <>
-            <FormControl size="small" sx={{ minWidth: 180 }}>
-              <MuiSelect value={filter} onChange={(event) => setFilter(event.target.value)} displayEmpty>
-                <MenuItem value="all">All sources</MenuItem>
-                <MenuItem value="niches">Niches</MenuItem>
-                <MenuItem value="inventory">Listings</MenuItem>
-                <MenuItem value="keywords">Keywords</MenuItem>
-                <MenuItem value="trends">Trends</MenuItem>
-              </MuiSelect>
-            </FormControl>
-            <FormControl size="small" sx={{ minWidth: 160 }}>
-              <MuiSelect value={granularity} onChange={(event) => setGranularity(event.target.value)}>
-                <MenuItem value="day">Day</MenuItem>
-                <MenuItem value="week">Week</MenuItem>
-                <MenuItem value="month">Month</MenuItem>
-                <MenuItem value="year">Year</MenuItem>
-              </MuiSelect>
-            </FormControl>
-              </>
-            )}
-            {reportType === "niche-matrix" && (
-              <FormControl size="small" sx={{ minWidth: 180 }}>
-                <MuiSelect value={matrixColorBy} onChange={(event) => setMatrixColorBy(event.target.value)}>
-                  <MenuItem value="status">Color by Status</MenuItem>
-                  <MenuItem value="platform">Color by Platform</MenuItem>
-                </MuiSelect>
-              </FormControl>
-            )}
+        <div style={{ display: "grid", gap: 6 }}>
+          <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".16em", color: C.muted }}>Listings Reports</div>
+          <h2 style={{ margin: "2px 0 0", fontSize: 24 }}>Report Dashboard</h2>
+          <div style={{ color: C.muted }}>
+            Review all report widgets side by side, with the same dashboard-style card layout.
           </div>
         </div>
       </div>
 
-      {reportType === "items-added" && (
-        <>
+      <div
+        style={{
+          display: "grid",
+          gap: 18,
+          gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
+          alignItems: "start",
+        }}
+      >
+        <div style={{ display: "grid", gap: 12 }}>
+          <div
+            style={{
+              background: C.card,
+              border: `1px solid ${C.border}`,
+              borderRadius: 10,
+              padding: 18,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".16em", color: C.muted }}>Items Added</div>
+                <h3 style={{ margin: "8px 0 4px", fontSize: 22 }}>Items Added</h3>
+                <div style={{ color: C.muted }}>
+                  Track how many new records were added by day, week, month, or year.
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <FormControl size="small" sx={{ minWidth: 180 }}>
+                  <MuiSelect value={filter} onChange={(event) => setFilter(event.target.value)} displayEmpty>
+                    <MenuItem value="all">All sources</MenuItem>
+                    <MenuItem value="niches">Niches</MenuItem>
+                    <MenuItem value="inventory">Listings</MenuItem>
+                    <MenuItem value="keywords">Keywords</MenuItem>
+                    <MenuItem value="trends">Trends</MenuItem>
+                  </MuiSelect>
+                </FormControl>
+                <FormControl size="small" sx={{ minWidth: 160 }}>
+                  <MuiSelect value={granularity} onChange={(event) => setGranularity(event.target.value)}>
+                    <MenuItem value="day">Day</MenuItem>
+                    <MenuItem value="week">Week</MenuItem>
+                    <MenuItem value="month">Month</MenuItem>
+                    <MenuItem value="year">Year</MenuItem>
+                  </MuiSelect>
+                </FormControl>
+              </div>
+            </div>
+          </div>
           <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
             {visibleSeries.map((item) => (
               <StatCard
@@ -4738,11 +5452,33 @@ function ReportsView({ data }) {
               </div>
             </div>
           </div>
-        </>
-      )}
+        </div>
 
-      {reportType === "niche-matrix" && (
-        <>
+        <div style={{ display: "grid", gap: 12 }}>
+          <div
+            style={{
+              background: C.card,
+              border: `1px solid ${C.border}`,
+              borderRadius: 10,
+              padding: 18,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".16em", color: C.muted }}>Niche Matrix</div>
+                <h3 style={{ margin: "8px 0 4px", fontSize: 22 }}>Niche Opportunity Matrix</h3>
+                <div style={{ color: C.muted }}>
+                  Compare demand versus competition to spot validated and emerging niche opportunities fast.
+                </div>
+              </div>
+              <FormControl size="small" sx={{ minWidth: 180 }}>
+                <MuiSelect value={matrixColorBy} onChange={(event) => setMatrixColorBy(event.target.value)}>
+                  <MenuItem value="status">Color by Status</MenuItem>
+                  <MenuItem value="platform">Color by Platform</MenuItem>
+                </MuiSelect>
+              </FormControl>
+            </div>
+          </div>
           <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
             <StatCard
               label="Goldmine"
@@ -4881,11 +5617,25 @@ function ReportsView({ data }) {
               </div>
             </div>
           </div>
-        </>
-      )}
+        </div>
 
-      {reportType === "platform-distribution" && (
-        <>
+        <div style={{ display: "grid", gap: 12 }}>
+          <div
+            style={{
+              background: C.card,
+              border: `1px solid ${C.border}`,
+              borderRadius: 10,
+              padding: 18,
+            }}
+          >
+            <div style={{ display: "grid", gap: 6 }}>
+              <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".16em", color: C.muted }}>Platform Distribution</div>
+              <h3 style={{ margin: "8px 0 4px", fontSize: 22 }}>Platform Distribution</h3>
+              <div style={{ color: C.muted }}>
+                See where the current listings portfolio is concentrated across your core selling platforms.
+              </div>
+            </div>
+          </div>
           <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
             <StatCard
               label="Total Listings"
@@ -4976,8 +5726,8 @@ function ReportsView({ data }) {
               </div>
             </div>
           </div>
-        </>
-      )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -18,7 +18,7 @@ import TableSortLabel from "@mui/material/TableSortLabel";
 import MuiTable from "@mui/material/Table";
 import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
-import { useSession } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import apiClient from "@/libs/api";
 import StandaloneNicheSelect, {
   DEFAULT_NICHE_OPTIONS,
@@ -290,6 +290,20 @@ function localDateKey() {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+function getUserInitials(user) {
+  const source = user?.name?.trim() || user?.email?.trim() || "A";
+  const parts = source.split(/\s+/).filter(Boolean);
+
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+
+  return parts
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
 }
 
 async function loadPlan() {
@@ -2137,6 +2151,8 @@ export default function PODTracker() {
   const [loading, setLoading] = useState(false);
   const [plan, setPlan] = useState("free");
   const [usage, setUsage] = useState({});
+  const [isAccountOpen, setIsAccountOpen] = useState(false);
+  const [isBillingLoading, setIsBillingLoading] = useState(false);
 
   useEffect(() => {
     const tabParam = searchParams.get("tab");
@@ -2279,6 +2295,27 @@ export default function PODTracker() {
     setSelectedNicheContext({ niche, subNiche: subNiche || "" });
     setTab("niche-home");
   }, [setTab]);
+
+  const handleSidebarSignOut = useCallback(() => {
+    signOut({ callbackUrl: "/" });
+  }, []);
+
+  const handleOpenBilling = useCallback(async () => {
+    setIsBillingLoading(true);
+
+    try {
+      const { url } = await apiClient.post("/stripe/create-portal", {
+        returnUrl: window.location.href,
+      });
+
+      window.location.href = url;
+    } catch (error) {
+      console.error(error);
+      alert("Could not open billing right now.");
+    }
+
+    setIsBillingLoading(false);
+  }, []);
 
   if (!loaded) {
     return (
@@ -2583,6 +2620,151 @@ export default function PODTracker() {
           }}
         >
           {isSidebarCollapsed ? `${data.niches.length}/${data.inventory.length}` : `${data.niches.length} niches · ${data.inventory.length} listings`}
+        </div>
+        <div
+          style={{
+            padding: isSidebarCollapsed ? "0 8px 12px" : "0 14px 14px",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setIsAccountOpen((prev) => !prev)}
+            title={isSidebarCollapsed ? "Account" : undefined}
+            style={{
+              width: "100%",
+              border: `1px solid ${C.border}`,
+              background: isAccountOpen ? C.card : C.surface,
+              color: C.text,
+              borderRadius: 12,
+              padding: isSidebarCollapsed ? "10px 6px" : "10px 12px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: isSidebarCollapsed ? "center" : "space-between",
+              gap: 10,
+              cursor: "pointer",
+              textAlign: "left",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+              <div
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: "50%",
+                  background: "linear-gradient(135deg, #1d4ed8, #0f766e)",
+                  color: "#fff",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  flexShrink: 0,
+                }}
+              >
+                {getUserInitials(session?.user)}
+              </div>
+              {!isSidebarCollapsed && (
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: C.white,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {session?.user?.name || "Account"}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: C.textMuted,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {PLAN_LIMITS[plan].name} plan
+                  </div>
+                </div>
+              )}
+            </div>
+            {!isSidebarCollapsed && (
+              <span style={{ color: C.textMuted, fontSize: 13 }}>{isAccountOpen ? "-" : "+"}</span>
+            )}
+          </button>
+
+          {!isSidebarCollapsed && isAccountOpen && (
+            <div
+              style={{
+                marginTop: 10,
+                border: `1px solid ${C.border}`,
+                borderRadius: 12,
+                background: C.card,
+                padding: 12,
+                display: "grid",
+                gap: 10,
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 11, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>
+                  Account
+                </div>
+                <div style={{ fontSize: 14, color: C.white, fontWeight: 700 }}>
+                  {session?.user?.name || "PODTrackerPro user"}
+                </div>
+                <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>
+                  {session?.user?.email || "No email available"}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  background: C.surface,
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 10,
+                  padding: 10,
+                }}
+              >
+                <div style={{ fontSize: 11, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>
+                  Plan
+                </div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <span
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 700,
+                      color: plan === "business" ? C.warn : plan === "starter" ? C.accent : C.textDim,
+                    }}
+                  >
+                    {PLAN_LIMITS[plan].name}
+                  </span>
+                  <span style={{ fontSize: 12, color: C.textMuted }}>{PLAN_LIMITS[plan].price}</span>
+                </div>
+                {plan === "free" && (
+                  <a
+                    href="/pricing"
+                    style={{ display: "inline-block", marginTop: 8, fontSize: 12, color: C.accent, textDecoration: "none" }}
+                  >
+                    Upgrade
+                  </a>
+                )}
+              </div>
+
+              <div style={{ display: "grid", gap: 8 }}>
+                {plan !== "free" && (
+                  <Btn variant="ghost" onClick={handleOpenBilling} disabled={isBillingLoading} style={{ width: "100%", justifyContent: "center" }}>
+                    {isBillingLoading ? "Opening billing..." : "Billing"}
+                  </Btn>
+                )}
+                <Btn variant="danger" onClick={handleSidebarSignOut} style={{ width: "100%", justifyContent: "center" }}>
+                  Logout
+                </Btn>
+              </div>
+            </div>
+          )}
         </div>
       </nav>
       <button

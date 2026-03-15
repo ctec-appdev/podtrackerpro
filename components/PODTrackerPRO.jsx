@@ -321,8 +321,8 @@ async function loadPlan() {
 async function loadUsage() {
   const today = localDateKey();
   try {
-    const r = await window.storage.get(`pod-usage-${today}`);
-    return r ? JSON.parse(r.value) : {};
+    const raw = await readBrowserStorage(`pod-usage-${today}`);
+    return raw ? JSON.parse(raw) : {};
   } catch {
     return {};
   }
@@ -331,7 +331,7 @@ async function loadUsage() {
 async function saveUsage(usage) {
   const today = localDateKey();
   try {
-    await window.storage.set(`pod-usage-${today}`, JSON.stringify(usage));
+    writeBrowserStorage(`pod-usage-${today}`, JSON.stringify(usage));
   } catch (e) {
     console.error(e);
   }
@@ -350,10 +350,44 @@ async function checkAndConsumeUsage(feature, planKey, currentUsage, setUsage) {
 }
 
 // ─── STORAGE HELPERS ───────────────────────────
+async function readBrowserStorage(key) {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  if (window.storage?.get) {
+    const result = await window.storage.get(key);
+    return result?.value || null;
+  }
+
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeBrowserStorage(key, value) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  if (window.storage?.set) {
+    window.storage.set(key, value);
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Ignore storage write failures in restricted browser contexts.
+  }
+}
+
 async function load(key) {
   try {
-    const r = await window.storage.get(key);
-    return r ? JSON.parse(r.value) : [];
+    const raw = await readBrowserStorage(key);
+    return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
   }
@@ -361,7 +395,7 @@ async function load(key) {
 
 async function save(key, data) {
   try {
-    await window.storage.set(key, JSON.stringify(data));
+    writeBrowserStorage(key, JSON.stringify(data));
   } catch (e) {
     console.error(e);
   }

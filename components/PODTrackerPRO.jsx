@@ -1,19 +1,29 @@
 "use client";
 
 import Image from "next/image";
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Button from "@mui/material/Button";
+import Box from "@mui/material/Box";
+import FormControl from "@mui/material/FormControl";
+import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
+import MuiSelect from "@mui/material/Select";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
+import TableSortLabel from "@mui/material/TableSortLabel";
 import MuiTable from "@mui/material/Table";
+import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
-import { useSession } from "next-auth/react";
-import CannyFeedback from "@/components/CannyFeedback";
+import { signOut, useSession } from "next-auth/react";
 import apiClient from "@/libs/api";
+import StandaloneNicheSelect, {
+  DEFAULT_NICHE_OPTIONS,
+  normalizeNicheOptionLabel,
+} from "@/components/NicheSelect";
 
 // ─── CONSTANTS ─────────────────────────────────
 const PLATFORMS = ["Amazon Merch", "Redbubble", "Etsy", "TeeSpring/Spring", "TeePublic", "Other"];
@@ -33,26 +43,259 @@ const STORAGE = {
   trends: "pod-dash-trends",
   briefs: "pod-dash-briefs",
   seo: "pod-dash-seo",
+  ideas: "pod-dash-ideas",
+  opportunityTrees: "pod-dash-opportunity-trees",
+  customNiches: "pod-dash-custom-niches",
+  customDates: "pod-dash-custom-dates",
+  nicheProfiles: "pod-dash-niche-profiles",
   inventory: "pod-dash-inventory",
   performance: "pod-dash-perf",
 };
 
+const EMPTY_TRACKER_DATA = {
+  niches: [],
+  keywords: [],
+  trends: [],
+  briefs: [],
+  seo: [],
+  ideas: [],
+  opportunityTrees: [],
+  customNiches: [],
+  customDates: [],
+  nicheProfiles: [],
+  inventory: [],
+  performance: [],
+};
+
 const TABS = [
   { id: "dashboard", label: "Dashboard", icon: "◈" },
-  { id: "niches", label: "Niches", icon: "◎" },
-  { id: "keywords", label: "Keywords", icon: "⌕" },
-  { id: "trends", label: "Trends", icon: "↗" },
-  { id: "briefs", label: "Design Briefs", icon: "✎" },
-  { id: "seo", label: "SEO Copy", icon: "¶" },
-  { id: "inventory", label: "Inventory", icon: "▤" },
-  { id: "trademark", label: "TM Check", icon: "™" },
-  { id: "research", label: "AI Research", icon: "✦" },
+  {
+    id: "research-group",
+    label: "Research",
+    icon: "◫",
+    children: [
+      { id: "niches", label: "Niches", icon: "◎" },
+      { id: "keywords", label: "Keywords", icon: "⌕" },
+      { id: "trends", label: "Trends", icon: "↗" },
+      { id: "trademark", label: "TM Check", icon: "™" },
+      { id: "research", label: "AI Research", icon: "✦" },
+    ],
+  },
+  {
+    id: "design-group",
+    label: "Design",
+    icon: "✎",
+    children: [
+      { id: "briefs", label: "Design Briefs", icon: "✎" },
+      { id: "seo", label: "SEO Copy", icon: "¶" },
+      { id: "ideas", label: "New Ideas", icon: "✸" },
+    ],
+  },
+  {
+    id: "listings-group",
+    label: "Listings",
+    icon: "▤",
+    children: [
+      { id: "inventory", label: "Tracker", icon: "▤" },
+      { id: "reports", label: "Reports", icon: "≡" },
+    ],
+  },
   { id: "guide", label: "Guide", icon: "?" },
 ];
 
 const BOTTOM_TABS = [
   { id: "improve-ptp", label: "Improve PTP", icon: "+" },
 ];
+
+TABS[1]?.children?.splice(2, 0, { id: "dates", label: "Dates", icon: "#" });
+
+const VALID_TAB_IDS = new Set([
+  "dashboard",
+  "niche-home",
+  "niches",
+  "keywords",
+  "trends",
+  "trademark",
+  "research",
+  "briefs",
+  "seo",
+  "ideas",
+  "inventory",
+  "reports",
+  "guide",
+]);
+
+VALID_TAB_IDS.add("dates");
+
+const CANNY_BOARD_URL = "https://podtrackerpro.canny.io/feature-requests";
+
+const MONTH_TO_INDEX = {
+  January: 0,
+  February: 1,
+  March: 2,
+  April: 3,
+  May: 4,
+  June: 5,
+  July: 6,
+  August: 7,
+  September: 8,
+  October: 9,
+  November: 10,
+  December: 11,
+};
+
+const DATE_KPI_WINDOWS = [30, 60, 90];
+
+const POD_DATES_SOURCE = `
+January|1|holiday|New Year's Day|Resolutions, fireworks, fresh starts
+January|2|niche|National Science Fiction Day|Sci-fi quotes, aliens, spaceships
+January|13|niche|National Sticker Day|Sticker pack themes, fun decals
+January|15|niche|National Hat Day|Hat lover graphics, custom beanies
+January|21|niche|National Cheesy Socks Day|Punny socks, cozy feet art
+January|23|niche|National Pie Day|Pie slices, baking humor
+January|24|niche|National Compliment Day|Positive vibes quotes
+February|2|holiday|Groundhog Day|Punxsutawney Phil, weather jokes
+February|6|niche|National Wear Red Day|Heart health, red-themed apparel
+February|9|niche|National Pizza Day|Pizza slices, foodie tees
+February|13|holiday|Galentine's Day|Girls' night, friendship sets
+February|14|holiday|Valentine's Day|Romance, couples matching
+February|15|niche|Singles Awareness Day|Single pride, funny anti-Valentine
+February|27|niche|National Retro Day|Vintage styles, 80s/90s nostalgia
+March|4|niche|National Grammar Day|Wordplay, bookish puns
+March|6|niche|National Dress Up Day|Costume fun, fancy outfits
+March|14|niche|National Pi Day|Math pies, geek humor
+March|17|holiday|St. Patrick's Day|Shamrocks, leprechauns
+March|19|niche|Let's Laugh Day|Jokes, comedy quotes
+March|20|niche|International Day of Happiness|Smile faces, joy motifs
+March|24|niche|International Cash Mob Day|Money fun, shopping vibes
+April|1|holiday|April Fools' Day|Prank graphics, silly faces
+April|5|holiday|Easter Sunday|Bunnies, eggs, pastels
+April|11|niche|National Pet Day|Pet portraits, animal lovers
+April|14|niche|National Gardening Day|Plants, flowers
+April|22|holiday|Earth Day|Eco-friendly, nature scenes
+April|23|niche|World Book Day|Reading quotes, literary designs
+April|29|niche|International Dance Day|Dance poses, music fest themes
+May|4|niche|Star Wars Day|"May the 4th", Jedi art
+May|11|holiday|Mother's Day|Mom appreciation, florals
+May|16|niche|National Love a Tree Day|Tree hugger designs
+May|25|niche|National Wine Day|Wine glass humor
+May|30|niche|National Creativity Day|Artist vibes, DIY merch
+May|31|niche|National Smile Day|Happy faces, grins
+June|5|niche|World Environment Day|Green earth themes
+June|6|niche|National Doughnut Day|Donut puns, sweets
+June|8|niche|Best Friends Day|BFF matching merch
+June|15|holiday|Father's Day|Dad jokes, grilling themes
+June|21|niche|International Yoga Day|Yoga poses, zen art
+June|21|niche|National Selfie Day|Selfie frames, social humor
+June|21|niche|International T-Shirt Day|Tee lover prints
+July|4|holiday|Independence Day (US)|Patriotic, flags, fireworks
+July|5|niche|National Bikini Day|Beachwear, summer looks
+July|7|niche|World Chocolate Day|Chocolate art, sweet puns
+July|17|niche|World Emoji Day|Emoji mashups, expression themes
+July|19|niche|National Ice Cream Day|Scoops, cones, frozen treats
+July|20|niche|National Moon Day|Space, astronauts, lunar themes
+July|30|niche|International Day of Friendship|Friend quotes, matching sets
+August|8|niche|International Cat Day|Cat memes, feline humor
+August|9|niche|National Book Lovers Day|Book stacks, reader pride
+August|10|niche|National Lazy Day|Couch potato, nap club graphics
+August|16|niche|National Tell a Joke Day|Pun central, comedy merch
+August|19|niche|World Photography Day|Camera motifs, creative shoots
+August|26|niche|International Dog Day|Dog breeds, pup love
+September|7|holiday|Labor Day (US)|Workers pride, job-site humor
+September|8|niche|International Literacy Day|Reading passion, classroom vibes
+September|12|niche|National Video Games Day|Gamer gear, retro controls
+September|13|holiday|National Grandparents Day|Grandparent love, family pride
+September|21|niche|International Day of Peace|Peace signs, calm motifs
+September|27|niche|World Tourism Day|Travel vibes, passport art
+October|1|niche|International Coffee Day|Coffee quotes, cafe culture
+October|3|niche|World Smile Day|Grins galore, feel-good art
+October|4|niche|World Animal Welfare Day|Animal rescue, compassion themes
+October|5|niche|World Teachers' Day|Teacher thanks, classroom humor
+October|10|niche|World Mental Health Day|Awareness ribbons, support themes
+October|16|niche|Boss's Day|Boss humor, workplace jokes
+October|31|holiday|Halloween|Spooky, costumes, pumpkins
+November|1|niche|World Vegan Day|Plant-based merch
+November|11|holiday|Veterans Day (US)|Patriotic vets, service pride
+November|19|niche|International Men's Day|Men's themes, positivity
+November|26/27|holiday|Thanksgiving|Turkey, gratitude, family dinner
+November|27/28|holiday|Black Friday|Deals hype, shopping frenzy
+November|30|holiday|Cyber Monday|Online shopper, digital deals
+December|1|holiday|Cyber Monday (alt date)|Digital sales, ecommerce humor
+December|4|niche|National Sock Day|Sock patterns, cozy feet
+December|14|niche|National Free Shipping Day|Shipping fun, ecommerce jokes
+December|25|holiday|Christmas|Santa, trees, festive cheer
+December|31|holiday|New Year's Eve|Countdown, party themes
+`;
+
+const POD_DATES = POD_DATES_SOURCE.trim().split("\n").map((line, index) => {
+  const [month, rawDay, type, event, ideas] = line.split("|");
+  const dayNumber = Number(String(rawDay).split("/")[0]);
+
+  return {
+    id: `pod-date-${index + 1}`,
+    month,
+    monthIndex: MONTH_TO_INDEX[month],
+    rawDay,
+    dayNumber,
+    type,
+    event,
+    ideas,
+  };
+});
+
+const IDEA_COLUMNS = [
+  {
+    id: "backlog",
+    label: "Backlog",
+    stripe: "#64748b",
+    help: "Capture rough concepts fast. Add a title first, then flesh out the details when you are ready.",
+  },
+  {
+    id: "researching",
+    label: "Researching",
+    stripe: "#3b82f6",
+    help: "Use this stage to connect the idea to niches, trends, and keywords that look promising.",
+  },
+  {
+    id: "designing",
+    label: "Designing",
+    stripe: "#f59e0b",
+    help: "Move cards here once you are sketching, prompting, or building the actual artwork.",
+  },
+  {
+    id: "reviewing",
+    label: "Reviewing",
+    stripe: "#8b5cf6",
+    help: "Use this lane for quality control, trademark review, copy polish, and final checks.",
+  },
+  {
+    id: "posted",
+    label: "Posted",
+    stripe: "#10b981",
+    help: "Drop finished ideas here once the design is live so you have a lightweight win log.",
+  },
+];
+
+const OST_NODE_LABELS = {
+  outcome: "Outcome",
+  opportunity: "Opportunity",
+  solution: "Solution",
+  experiment: "Experiment",
+};
+
+const OST_NODE_COLORS = {
+  outcome: { chip: "#1d4ed8", border: "rgba(96,165,250,0.5)", background: "rgba(30,64,175,0.22)" },
+  opportunity: { chip: "#0f766e", border: "rgba(45,212,191,0.45)", background: "rgba(15,118,110,0.2)" },
+  solution: { chip: "#7c3aed", border: "rgba(167,139,250,0.42)", background: "rgba(91,33,182,0.18)" },
+  experiment: { chip: "#b45309", border: "rgba(251,191,36,0.42)", background: "rgba(146,64,14,0.18)" },
+};
+
+const OST_CHILD_OPTIONS = {
+  outcome: ["opportunity"],
+  opportunity: ["opportunity", "solution"],
+  solution: ["experiment"],
+  experiment: [],
+};
 
 const EXAMPLE_ROWS = {
   niches: {
@@ -178,6 +421,20 @@ function localDateKey() {
   return `${y}-${m}-${day}`;
 }
 
+function getUserInitials(user) {
+  const source = user?.name?.trim() || user?.email?.trim() || "A";
+  const parts = source.split(/\s+/).filter(Boolean);
+
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+
+  return parts
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
+}
+
 async function loadPlan() {
   try {
     const res = await fetch("/api/user/plan");
@@ -193,8 +450,8 @@ async function loadPlan() {
 async function loadUsage() {
   const today = localDateKey();
   try {
-    const r = await window.storage.get(`pod-usage-${today}`);
-    return r ? JSON.parse(r.value) : {};
+    const raw = await readBrowserStorage(`pod-usage-${today}`);
+    return raw ? JSON.parse(raw) : {};
   } catch {
     return {};
   }
@@ -203,7 +460,7 @@ async function loadUsage() {
 async function saveUsage(usage) {
   const today = localDateKey();
   try {
-    await window.storage.set(`pod-usage-${today}`, JSON.stringify(usage));
+    writeBrowserStorage(`pod-usage-${today}`, JSON.stringify(usage));
   } catch (e) {
     console.error(e);
   }
@@ -222,10 +479,44 @@ async function checkAndConsumeUsage(feature, planKey, currentUsage, setUsage) {
 }
 
 // ─── STORAGE HELPERS ───────────────────────────
+async function readBrowserStorage(key) {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  if (window.storage?.get) {
+    const result = await window.storage.get(key);
+    return result?.value || null;
+  }
+
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeBrowserStorage(key, value) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  if (window.storage?.set) {
+    window.storage.set(key, value);
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Ignore storage write failures in restricted browser contexts.
+  }
+}
+
 async function load(key) {
   try {
-    const r = await window.storage.get(key);
-    return r ? JSON.parse(r.value) : [];
+    const raw = await readBrowserStorage(key);
+    return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
   }
@@ -233,11 +524,243 @@ async function load(key) {
 
 async function save(key, data) {
   try {
-    await window.storage.set(key, JSON.stringify(data));
+    writeBrowserStorage(key, JSON.stringify(data));
   } catch (e) {
     console.error(e);
   }
 }
+
+async function loadLocalTrackerState() {
+  const entries = await Promise.all(
+    Object.entries(STORAGE).map(async ([key, storageKey]) => [key, await load(storageKey)])
+  );
+
+  return Object.fromEntries(entries);
+}
+
+async function saveLocalTrackerState(tracker) {
+  await Promise.all(
+    Object.entries(STORAGE).map(async ([key, storageKey]) => {
+      await save(storageKey, Array.isArray(tracker?.[key]) ? tracker[key] : []);
+    })
+  );
+}
+
+function normalizeTrackerState(tracker) {
+  return Object.fromEntries(
+    Object.keys(EMPTY_TRACKER_DATA).map((key) => [key, Array.isArray(tracker?.[key]) ? tracker[key] : []])
+  );
+}
+
+function hasAnyTrackerData(tracker) {
+  return Object.values(normalizeTrackerState(tracker)).some((items) => items.length > 0);
+}
+
+async function loadTrackerState() {
+  try {
+    const response = await fetch("/api/user/tracker", { cache: "no-store" });
+    if (!response.ok) throw new Error("Failed to load tracker state");
+
+    const payload = await response.json();
+    const serverTracker = normalizeTrackerState(payload?.tracker);
+
+    if (payload?.exists) {
+      await saveLocalTrackerState(serverTracker);
+      return serverTracker;
+    }
+
+    const localTracker = normalizeTrackerState(await loadLocalTrackerState());
+    if (hasAnyTrackerData(localTracker)) {
+      try {
+        await fetch("/api/user/tracker", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tracker: localTracker }),
+        });
+      } catch (error) {
+        console.error(error);
+      }
+
+      return localTracker;
+    }
+
+    return serverTracker;
+  } catch (error) {
+    console.error(error);
+    return normalizeTrackerState(await loadLocalTrackerState());
+  }
+}
+
+async function saveTrackerState(tracker) {
+  const normalized = normalizeTrackerState(tracker);
+  await saveLocalTrackerState(normalized);
+
+  const response = await fetch("/api/user/tracker", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tracker: normalized }),
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload?.error || "Failed to save tracker state");
+  }
+
+  return normalized;
+}
+
+function generateTrackerId(prefix = "item") {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function generateIdeaId() {
+  return generateTrackerId("idea");
+}
+
+function createOstNode(type, title = "") {
+  const fallbackTitles = {
+    outcome: "Desired outcome",
+    opportunity: "Customer opportunity",
+    solution: "Proposed solution",
+    experiment: "Experiment or test",
+  };
+
+  return {
+    id: generateTrackerId(type),
+    type,
+    title: title || fallbackTitles[type] || "Untitled node",
+    notes: "",
+    children: [],
+  };
+}
+
+function createOpportunityTree(title = "") {
+  const now = new Date().toISOString();
+
+  return {
+    id: generateTrackerId("ost"),
+    title: title || "New Opportunity Solution Tree",
+    createdAt: now,
+    updatedAt: now,
+    outcome: createOstNode("outcome", "Desired outcome"),
+  };
+}
+
+function escapeHtml(value = "") {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function ostNotesToHtml(notes = "") {
+  const trimmed = String(notes).trim();
+  if (!trimmed) {
+    return "<p></p>";
+  }
+
+  return trimmed
+    .split(/\n{2,}/)
+    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br />")}</p>`)
+    .join("");
+}
+
+function countOstDescendants(node) {
+  if (!node?.children?.length) return 0;
+  return node.children.reduce((total, child) => total + 1 + countOstDescendants(child), 0);
+}
+
+function countOstNodesByType(node, counts = {}) {
+  if (!node) return counts;
+
+  counts[node.type] = (counts[node.type] || 0) + 1;
+  (node.children || []).forEach((child) => countOstNodesByType(child, counts));
+  return counts;
+}
+
+function cloneOstNode(node) {
+  return {
+    ...node,
+    id: generateTrackerId(node.type || "node"),
+    children: (node.children || []).map((child) => cloneOstNode(child)),
+  };
+}
+
+function updateOstNode(node, nodeId, updater) {
+  if (!node) {
+    return { node, updated: false };
+  }
+
+  if (node.id === nodeId) {
+    return { node: updater(node), updated: true };
+  }
+
+  let updated = false;
+  const children = (node.children || []).map((child) => {
+    const result = updateOstNode(child, nodeId, updater);
+    if (result.updated) {
+      updated = true;
+    }
+    return result.node;
+  });
+
+  if (!updated) {
+    return { node, updated: false };
+  }
+
+  return {
+    node: {
+      ...node,
+      children,
+    },
+    updated: true,
+  };
+}
+
+function deleteOstNode(node, nodeId) {
+  if (!node?.children?.length) {
+    return { node, deleted: false };
+  }
+
+  let deleted = false;
+  const children = [];
+
+  for (const child of node.children) {
+    if (child.id === nodeId) {
+      deleted = true;
+      continue;
+    }
+
+    const result = deleteOstNode(child, nodeId);
+    if (result.deleted) {
+      deleted = true;
+    }
+    children.push(result.node);
+  }
+
+  if (!deleted) {
+    return { node, deleted: false };
+  }
+
+  return {
+    node: {
+      ...node,
+      children,
+    },
+    deleted: true,
+  };
+}
+
+function getNicheProfileId(niche) {
+  return normalizeCompareValue(niche || "");
+}
+
 
 // ─── CSV IMPORT / EXPORT HELPERS ───────────────
 function parseCSVLine(line) {
@@ -407,8 +930,17 @@ function csvEscape(value) {
   return str;
 }
 
+function formatCSVHeaderLabel(column) {
+  return String(column)
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
 function rowsToCSV(rows, columns) {
-  const headerLine = columns.map(csvEscape).join(",");
+  const headerLine = columns.map((column) => csvEscape(formatCSVHeaderLabel(column))).join(",");
   const bodyLines = rows.map((row) => columns.map((col) => csvEscape(row[col])).join(","));
   return [headerLine, ...bodyLines].join("\n");
 }
@@ -629,17 +1161,22 @@ function Btn({ children, onClick, variant = "primary", disabled, style: s }) {
 
   const colorStyles = {
     primary: {
-      backgroundColor: C.accent,
+      background: "linear-gradient(180deg, #3b82f6 0%, #3b82f6 72%, #1d4ed8 100%)",
+      border: "1px solid #60a5fa",
       color: C.white,
-      "&:hover": { backgroundColor: "#2563eb" },
+      "&:hover": {
+        background: "linear-gradient(180deg, #60a5fa 0%, #3b82f6 68%, #1e40af 100%)",
+        borderColor: "#93c5fd",
+      },
     },
     ghost: {
-      borderColor: C.border,
-      color: C.textDim,
+      borderColor: "#94a3b8",
+      color: "#cbd5e1",
       backgroundColor: "transparent",
       "&:hover": {
-        borderColor: C.borderLight,
+        borderColor: "#cbd5e1",
         backgroundColor: C.surfaceHover,
+        color: C.white,
       },
     },
     danger: {
@@ -672,6 +1209,12 @@ function Btn({ children, onClick, variant = "primary", disabled, style: s }) {
         letterSpacing: "0.3px",
         lineHeight: 1.2,
         boxShadow: "none",
+        "&.Mui-disabled": {
+          color: "#94a3b8",
+          borderColor: "#64748b",
+          backgroundColor: "rgba(148, 163, 184, 0.08)",
+          opacity: 0.8,
+        },
         ...colorStyles[variant],
         ...s,
       }}
@@ -775,9 +1318,9 @@ function LockedBtn({ children, tooltip = "Upgrade to Starter or Business to unlo
           sx={{
             textTransform: "none",
             borderRadius: "6px",
-            borderColor: C.border,
-            color: C.textMuted,
-            opacity: 0.6,
+            borderColor: "#94a3b8",
+            color: "#cbd5e1",
+            opacity: 0.9,
             fontFamily: font,
             fontSize: 15,
             fontWeight: 600,
@@ -785,6 +1328,11 @@ function LockedBtn({ children, tooltip = "Upgrade to Starter or Business to unlo
             minWidth: "auto",
             px: 2,
             py: 1,
+            "&.Mui-disabled": {
+              color: "#94a3b8",
+              borderColor: "#94a3b8",
+              backgroundColor: "rgba(148, 163, 184, 0.08)",
+            },
             ...s,
           }}
         >
@@ -837,6 +1385,45 @@ function Input({ value, onChange, placeholder, style: s, ...props }) {
       }}
       {...props}
     />
+  );
+}
+
+function NicheLink({ niche, subNiche = "", onOpen, children, style: s }) {
+  const label = children || (subNiche || niche);
+
+  if (!niche || !label) {
+    return label || "—";
+  }
+
+  return (
+    <span
+      role="link"
+      tabIndex={0}
+      onClick={() => onOpen?.(niche, subNiche)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen?.(niche, subNiche);
+        }
+      }}
+      style={{
+        background: "none",
+        border: "none",
+        padding: 0,
+        margin: 0,
+        color: C.accent,
+        cursor: "pointer",
+        fontFamily: "inherit",
+        fontSize: "inherit",
+        textDecoration: "underline",
+        textUnderlineOffset: 3,
+        textAlign: "left",
+        display: "inline",
+        ...s,
+      }}
+    >
+      {label}
+    </span>
   );
 }
 
@@ -1143,9 +1730,119 @@ function TableLegacy({ columns, data, onDelete, onUpdate, exampleRow, onCreateEx
 function Table({ columns, data, onDelete, onUpdate, exampleRow, onCreateExample }) {
   const [editingIndex, setEditingIndex] = useState(null);
   const [draftRow, setDraftRow] = useState({});
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterValues, setFilterValues] = useState({});
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
   const showExample = !data.length && !!exampleRow;
-  const displayRows = showExample ? [exampleRow] : data;
+  const displayRows = useMemo(() => (showExample ? [exampleRow] : data), [data, exampleRow, showExample]);
   const hasActions = showExample ? !!onCreateExample : !!(onUpdate || onDelete);
+  const hasControls = !showExample && data.length > 0;
+
+  const filterableColumns = useMemo(
+    () => columns.filter((column) => column.filterable || Array.isArray(column.filterOptions)),
+    [columns]
+  );
+
+  const filterOptionsMap = useMemo(() => {
+    return Object.fromEntries(
+      filterableColumns.map((column) => {
+        const options = Array.isArray(column.filterOptions)
+          ? column.filterOptions
+          : Array.from(
+              new Set(
+                (data || [])
+                  .map((row) => row?.[column.key])
+                  .filter((value) => value !== undefined && value !== null && value !== "")
+                  .map((value) => String(value))
+              )
+            );
+
+        return [column.key, options];
+      })
+    );
+  }, [data, filterableColumns]);
+
+  const filteredRows = useMemo(() => {
+    const normalizedSearch = searchQuery.trim().toLowerCase();
+
+    return displayRows.filter((row) => {
+      const matchesSearch =
+        !normalizedSearch ||
+        columns.some((column) => {
+          const rawValue = row?.[column.key];
+          return String(rawValue ?? "").toLowerCase().includes(normalizedSearch);
+        });
+
+      const matchesFilters = filterableColumns.every((column) => {
+        const selected = filterValues[column.key];
+        if (!selected) return true;
+        return String(row?.[column.key] ?? "") === selected;
+      });
+
+      return matchesSearch && matchesFilters;
+    });
+  }, [columns, displayRows, filterValues, filterableColumns, searchQuery]);
+
+  const sortedRows = useMemo(() => {
+    if (!sortConfig.key) return filteredRows;
+
+    const sortColumn = columns.find((column) => column.key === sortConfig.key);
+    if (!sortColumn) return filteredRows;
+
+    const normalizeSortValue = (value) => {
+      if (value === null || value === undefined || value === "") return { type: "empty", value: "" };
+
+      if (typeof value === "number") return { type: "number", value };
+
+      const stringValue = String(value).trim();
+      const numericValue = Number(stringValue);
+      if (!Number.isNaN(numericValue) && stringValue !== "") {
+        return { type: "number", value: numericValue };
+      }
+
+      if (/^\d{4}-\d{2}-\d{2}$/.test(stringValue)) {
+        const timeValue = Date.parse(stringValue);
+        if (!Number.isNaN(timeValue)) {
+          return { type: "date", value: timeValue };
+        }
+      }
+
+      return { type: "string", value: stringValue.toLowerCase() };
+    };
+
+    const rows = [...filteredRows];
+    rows.sort((leftRow, rightRow) => {
+      const left = normalizeSortValue(leftRow?.[sortConfig.key]);
+      const right = normalizeSortValue(rightRow?.[sortConfig.key]);
+
+      if (left.type === "empty" && right.type !== "empty") return 1;
+      if (left.type !== "empty" && right.type === "empty") return -1;
+
+      let comparison = 0;
+      if (left.value < right.value) comparison = -1;
+      if (left.value > right.value) comparison = 1;
+
+      return sortConfig.direction === "asc" ? comparison : -comparison;
+    });
+
+    return rows;
+  }, [columns, filteredRows, sortConfig]);
+
+  const toggleSort = (columnKey) => {
+    setSortConfig((prev) => {
+      if (prev.key === columnKey) {
+        return {
+          key: columnKey,
+          direction: prev.direction === "asc" ? "desc" : "asc",
+        };
+      }
+
+      return {
+        key: columnKey,
+        direction: "asc",
+      };
+    });
+  };
 
   const startEdit = (index, row) => {
     setEditingIndex(index);
@@ -1205,6 +1902,75 @@ function Table({ columns, data, onDelete, onUpdate, exampleRow, onCreateExample 
           Edit and save this example to create your first entry.
         </div>
       )}
+      {hasControls && (
+        <Box
+          sx={{
+            display: "flex",
+            gap: 1.5,
+            flexWrap: "wrap",
+            alignItems: "center",
+            mb: 1.5,
+          }}
+        >
+          <TextField
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search rows"
+            size="small"
+            sx={{
+              minWidth: 240,
+              "& .MuiOutlinedInput-root": {
+                backgroundColor: C.surface,
+                color: C.text,
+                fontFamily: font,
+                "& fieldset": { borderColor: C.border },
+                "&:hover fieldset": { borderColor: C.borderLight },
+                "&.Mui-focused fieldset": { borderColor: "#94a3b8" },
+              },
+              "& input": {
+                fontFamily: font,
+                fontSize: 14,
+              },
+            }}
+          />
+          {filterableColumns.map((column) => (
+            <FormControl
+              key={column.key}
+              size="small"
+              sx={{
+                minWidth: 170,
+                "& .MuiOutlinedInput-root": {
+                  backgroundColor: C.surface,
+                  color: C.text,
+                  fontFamily: font,
+                  "& fieldset": { borderColor: C.border },
+                  "&:hover fieldset": { borderColor: C.borderLight },
+                  "&.Mui-focused fieldset": { borderColor: "#94a3b8" },
+                },
+                "& .MuiSelect-select": {
+                  fontFamily: font,
+                  fontSize: 14,
+                },
+              }}
+            >
+              <MuiSelect
+                displayEmpty
+                value={filterValues[column.key] || ""}
+                onChange={(e) =>
+                  setFilterValues((prev) => ({ ...prev, [column.key]: e.target.value }))
+                }
+              >
+                <MenuItem value="">{`All ${column.label}`}</MenuItem>
+                {(filterOptionsMap[column.key] || []).map((option) => (
+                  <MenuItem key={option} value={option}>
+                    {option}
+                  </MenuItem>
+                ))}
+              </MuiSelect>
+            </FormControl>
+          ))}
+        </Box>
+      )}
       <TableContainer
         component={Paper}
         sx={{
@@ -1230,9 +1996,33 @@ function Table({ columns, data, onDelete, onUpdate, exampleRow, onCreateExample 
                     letterSpacing: "0.5px",
                     borderBottom: `1px solid ${C.border}`,
                     whiteSpace: "nowrap",
+                    minWidth: c.minW,
+                    width: c.width,
                   }}
                 >
-                  {c.label}
+                  {c.sortable !== false ? (
+                    <TableSortLabel
+                      active={sortConfig.key === c.key}
+                      direction={sortConfig.key === c.key ? sortConfig.direction : "asc"}
+                      onClick={() => toggleSort(c.key)}
+                      sx={{
+                        color: `${C.textMuted} !important`,
+                        "& .MuiTableSortLabel-icon": {
+                          color: `${C.textMuted} !important`,
+                        },
+                        "&.Mui-active": {
+                          color: `${C.white} !important`,
+                        },
+                        "&.Mui-active .MuiTableSortLabel-icon": {
+                          color: `${C.white} !important`,
+                        },
+                      }}
+                    >
+                      {c.label}
+                    </TableSortLabel>
+                  ) : (
+                    c.label
+                  )}
                 </TableCell>
               ))}
               {hasActions && (
@@ -1247,7 +2037,7 @@ function Table({ columns, data, onDelete, onUpdate, exampleRow, onCreateExample 
             </TableRow>
           </TableHead>
           <TableBody>
-            {displayRows.map((row, i) => (
+            {sortedRows.map((row, i) => (
               <TableRow
                 key={i}
                 sx={{
@@ -1263,6 +2053,8 @@ function Table({ columns, data, onDelete, onUpdate, exampleRow, onCreateExample 
                       color: C.text,
                       fontFamily: font,
                       fontSize: 15,
+                      minWidth: c.minW,
+                      width: c.width,
                       maxWidth: c.maxW || 220,
                       verticalAlign: "top",
                     }}
@@ -1354,6 +2146,22 @@ function Table({ columns, data, onDelete, onUpdate, exampleRow, onCreateExample 
                 )}
               </TableRow>
             ))}
+            {!sortedRows.length && (
+              <TableRow>
+                <TableCell
+                  colSpan={columns.length + (hasActions ? 1 : 0)}
+                  sx={{
+                    color: C.textMuted,
+                    fontFamily: font,
+                    textAlign: "center",
+                    py: 4,
+                    borderBottom: `1px solid ${C.border}`,
+                  }}
+                >
+                  No matching rows.
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </MuiTable>
       </TableContainer>
@@ -1491,27 +2299,76 @@ function CSVSampleButton({ label, filename, columns, sampleRow }) {
 // ─── MAIN APP ──────────────────────────────────
 export default function PODTracker() {
   const { data: session, status } = useSession();
-  const [tab, setTab] = useState("dashboard");
-  const [data, setData] = useState({
-    niches: [],
-    keywords: [],
-    trends: [],
-    briefs: [],
-    seo: [],
-    inventory: [],
-    performance: [],
-  });
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get("tab");
+  const [tab, setTabState] = useState(
+    initialTab && VALID_TAB_IDS.has(initialTab) ? initialTab : "dashboard"
+  );
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [openNavGroups, setOpenNavGroups] = useState({ "research-group": false, "design-group": false });
+  const [selectedNicheContext, setSelectedNicheContext] = useState(null);
+  const [data, setData] = useState(EMPTY_TRACKER_DATA);
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [plan, setPlan] = useState("free");
   const [usage, setUsage] = useState({});
+  const [isAccountOpen, setIsAccountOpen] = useState(false);
+  const [isBillingLoading, setIsBillingLoading] = useState(false);
+
+  useEffect(() => {
+    const tabParam = searchParams.get("tab");
+    const nextTab = tabParam && VALID_TAB_IDS.has(tabParam) ? tabParam : "dashboard";
+
+    setTabState((currentTab) => (currentTab === nextTab ? currentTab : nextTab));
+  }, [searchParams]);
+
+  const setTab = useCallback(
+    (nextTab, options = {}) => {
+      if (!VALID_TAB_IDS.has(nextTab)) {
+        return;
+      }
+
+      const navigate = options.history === "replace" ? router.replace : router.push;
+      const params = new URLSearchParams(searchParams.toString());
+
+      if (nextTab === "dashboard") {
+        params.delete("tab");
+      } else {
+        params.set("tab", nextTab);
+      }
+
+      const nextUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+
+      setTabState((currentTab) => (currentTab === nextTab ? currentTab : nextTab));
+      navigate(nextUrl, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mediaQuery = window.matchMedia("(max-width: 768px)");
+    const syncSidebarState = (event) => {
+      setIsSidebarCollapsed(event.matches);
+    };
+
+    setIsSidebarCollapsed(mediaQuery.matches);
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", syncSidebarState);
+      return () => mediaQuery.removeEventListener("change", syncSidebarState);
+    }
+
+    mediaQuery.addListener(syncSidebarState);
+    return () => mediaQuery.removeListener(syncSidebarState);
+  }, []);
 
   useEffect(() => {
     (async () => {
-      const d = {};
-      for (const [k, v] of Object.entries(STORAGE)) {
-        d[k] = await load(v);
-      }
+      const d = await loadTrackerState();
       const p = await loadPlan();
       const u = await loadUsage();
       setData(d);
@@ -1520,6 +2377,15 @@ export default function PODTracker() {
       setLoaded(true);
     })();
   }, []);
+
+  useEffect(() => {
+    const activeGroup = TABS.find((item) => item.children?.some((child) => child.id === tab));
+    if (!activeGroup) return;
+
+    setOpenNavGroups((prev) => (
+      prev[activeGroup.id] ? prev : { ...prev, [activeGroup.id]: true }
+    ));
+  }, [tab]);
 
   useEffect(() => {
     if (status !== "authenticated") {
@@ -1547,8 +2413,12 @@ export default function PODTracker() {
   }, [session?.user?.name, status]);
 
   const update = useCallback(async (key, newData) => {
-    setData((prev) => ({ ...prev, [key]: newData }));
-    await save(STORAGE[key], newData);
+    let nextState;
+    setData((prev) => {
+      nextState = { ...prev, [key]: newData };
+      return nextState;
+    });
+    await saveTrackerState(nextState);
   }, []);
 
   const addItem = useCallback(
@@ -1583,6 +2453,33 @@ export default function PODTracker() {
     [data, update]
   );
 
+  const openNicheHome = useCallback((niche, subNiche = "") => {
+    if (!niche) return;
+    setSelectedNicheContext({ niche, subNiche: subNiche || "" });
+    setTab("niche-home");
+  }, [setTab]);
+
+  const handleSidebarSignOut = useCallback(() => {
+    signOut({ callbackUrl: "/" });
+  }, []);
+
+  const handleOpenBilling = useCallback(async () => {
+    setIsBillingLoading(true);
+
+    try {
+      const { url } = await apiClient.post("/stripe/create-portal", {
+        returnUrl: window.location.href,
+      });
+
+      window.location.href = url;
+    } catch (error) {
+      console.error(error);
+      alert("Could not open billing right now.");
+    }
+
+    setIsBillingLoading(false);
+  }, []);
+
   if (!loaded) {
     return (
       <div
@@ -1601,136 +2498,421 @@ export default function PODTracker() {
 
   return (
     <div style={{ background: C.bg, minHeight: "100vh", display: "flex", fontFamily: sansFont, color: C.text }}>
+      <div
+        style={{
+          width: isSidebarCollapsed ? 72 : 200,
+          flexShrink: 0,
+          position: "sticky",
+          top: 0,
+          height: "100vh",
+          overflow: "visible",
+          transition: "width 0.18s ease",
+          zIndex: 5,
+        }}
+      >
       <nav
         style={{
-          width: 200,
+          width: "100%",
           background: C.surface,
           borderRight: `1px solid ${C.border}`,
           padding: "16px 0",
           display: "flex",
           flexDirection: "column",
-          flexShrink: 0,
-          position: "sticky",
-          top: 0,
           height: "100vh",
           overflowY: "auto",
+          overflowX: "hidden",
         }}
       >
         <div
           style={{
-            padding: "12px 16px 16px",
+            padding: isSidebarCollapsed ? "12px 10px 16px" : "12px 16px 16px",
             borderBottom: `1px solid ${C.border}`,
             marginBottom: 8,
           }}
         >
-          <Image
-            src="/podtrackerpro-logo.png"
-            alt="PODTrackerPro"
-            width={168}
-            height={31}
-            unoptimized
-            style={{ width: "100%", maxWidth: 168, height: "auto", display: "block", objectFit: "contain" }}
-          />
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+            <Image
+              src="/podtrackerpro-logo.png"
+              alt="PODTrackerPro"
+              width={168}
+              height={31}
+              unoptimized
+              style={{
+                width: "100%",
+                maxWidth: isSidebarCollapsed ? 36 : 168,
+                height: "auto",
+                display: "block",
+                objectFit: "contain",
+              }}
+            />
+            {!isSidebarCollapsed && (
+              <button
+                onClick={() => setIsSidebarCollapsed(true)}
+                aria-label="Collapse sidebar"
+                style={{
+                  border: `1px solid ${C.border}`,
+                  background: C.card,
+                  color: C.textDim,
+                  borderRadius: 6,
+                  width: 28,
+                  height: 28,
+                  cursor: "pointer",
+                  fontFamily: font,
+                  flexShrink: 0,
+                  display: "none",
+                }}
+              >
+                ←
+              </button>
+            )}
+          </div>
+          {isSidebarCollapsed && (
+            <button
+              onClick={() => setIsSidebarCollapsed(false)}
+              aria-label="Expand sidebar"
+              style={{
+                border: `1px solid ${C.border}`,
+                background: C.card,
+                color: C.textDim,
+                borderRadius: 6,
+                width: 36,
+                height: 28,
+                cursor: "pointer",
+                fontFamily: font,
+                margin: "10px auto 0",
+                display: "none",
+              }}
+            >
+              →
+            </button>
+          )}
         </div>
 
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              padding: "10px 20px",
-              border: "none",
-              cursor: "pointer",
-              background: tab === t.id ? C.accentGlow : "transparent",
-              color: tab === t.id ? C.accent : C.textDim,
-              fontFamily: font,
-              fontSize: 15,
-              textAlign: "left",
-              borderRight: tab === t.id ? `2px solid ${C.accent}` : "2px solid transparent",
-              transition: "all 0.15s",
-            }}
-          >
-            <span style={{ fontSize: 17, width: 18 }}>{t.icon}</span> {t.label}
-          </button>
-        ))}
+        {TABS.map((t) => {
+          if (t.children?.length) {
+            const isGroupActive = t.children.some((child) => child.id === tab);
+            const isGroupOpen = isSidebarCollapsed ? true : openNavGroups[t.id] !== false;
+
+            return (
+              <div key={t.id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isSidebarCollapsed) return;
+                    setOpenNavGroups((prev) => ({ ...prev, [t.id]: !isGroupOpen }));
+                  }}
+                  title={isSidebarCollapsed ? t.label : undefined}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: isSidebarCollapsed ? "center" : "space-between",
+                    gap: 10,
+                    padding: isSidebarCollapsed ? "10px 0" : "10px 20px 8px",
+                    color: isGroupActive ? C.white : C.textMuted,
+                    fontFamily: font,
+                    fontSize: 13,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.8,
+                    width: "100%",
+                    border: "none",
+                    background: "transparent",
+                    cursor: isSidebarCollapsed ? "default" : "pointer",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 16, width: 18, textAlign: "center" }}>{t.icon}</span>
+                    {!isSidebarCollapsed && t.label}
+                  </span>
+                  {!isSidebarCollapsed && (
+                    <span style={{ fontSize: 14, color: isGroupActive ? C.white : C.textDim }}>
+                      {isGroupOpen ? "▾" : "▸"}
+                    </span>
+                  )}
+                </button>
+                {isGroupOpen && t.children.map((child) => (
+                  <button
+                    key={child.id}
+                    onClick={() => setTab(child.id)}
+                    title={isSidebarCollapsed ? child.label : undefined}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: isSidebarCollapsed ? "center" : "flex-start",
+                      gap: 10,
+                      padding: isSidebarCollapsed ? "10px 0" : "10px 20px 10px 34px",
+                      border: "none",
+                      cursor: "pointer",
+                      background: tab === child.id ? C.accentGlow : "transparent",
+                      color: tab === child.id ? C.accent : C.textDim,
+                      fontFamily: font,
+                      fontSize: 15,
+                      textAlign: "left",
+                      borderRight: tab === child.id ? `2px solid ${C.accent}` : "2px solid transparent",
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    <span style={{ fontSize: 17, width: 18, textAlign: "center" }}>{child.icon}</span>
+                    {!isSidebarCollapsed && child.label}
+                  </button>
+                ))}
+              </div>
+            );
+          }
+
+          return (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              title={isSidebarCollapsed ? t.label : undefined}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: isSidebarCollapsed ? "center" : "flex-start",
+                gap: 10,
+                padding: isSidebarCollapsed ? "10px 0" : "10px 20px",
+                border: "none",
+                cursor: "pointer",
+                background: tab === t.id ? C.accentGlow : "transparent",
+                color: tab === t.id ? C.accent : C.textDim,
+                fontFamily: font,
+                fontSize: 15,
+                textAlign: "left",
+                borderRight: tab === t.id ? `2px solid ${C.accent}` : "2px solid transparent",
+                transition: "all 0.15s",
+              }}
+            >
+              <span style={{ fontSize: 17, width: 18, textAlign: "center" }}>{t.icon}</span>
+              {!isSidebarCollapsed && t.label}
+            </button>
+          );
+        })}
 
         <div style={{ flex: 1 }} />
 
         {BOTTOM_TABS.map((t) => (
           <button
             key={t.id}
-            onClick={() => setTab(t.id)}
+            onClick={() => {
+              if (t.id === "improve-ptp") {
+                window.open(CANNY_BOARD_URL, "_blank", "noopener,noreferrer");
+                return;
+              }
+              setTab(t.id);
+            }}
+            title={isSidebarCollapsed ? t.label : undefined}
             style={{
               display: "flex",
               alignItems: "center",
+              justifyContent: isSidebarCollapsed ? "center" : "flex-start",
               gap: 10,
-              padding: "10px 20px",
+              padding: isSidebarCollapsed ? "10px 0" : "10px 20px",
               border: "none",
               cursor: "pointer",
-              background: tab === t.id ? C.accentGlow : "transparent",
-              color: tab === t.id ? C.accent : C.textDim,
+              background: "transparent",
+              color: C.textDim,
               fontFamily: font,
               fontSize: 15,
               textAlign: "left",
-              borderRight: tab === t.id ? `2px solid ${C.accent}` : "2px solid transparent",
+              borderRight: "2px solid transparent",
               transition: "all 0.15s",
             }}
           >
-            <span style={{ fontSize: 17, width: 18 }}>{t.icon}</span> {t.label}
+            <span style={{ fontSize: 17, width: 18, textAlign: "center" }}>{t.icon}</span>
+            {!isSidebarCollapsed && t.label}
           </button>
         ))}
 
-        {/* Plan badge in sidebar */}
         <div
           style={{
-            padding: "10px 16px",
-            borderTop: `1px solid ${C.border}`,
-            borderBottom: `1px solid ${C.border}`,
-            marginBottom: 4,
+            padding: isSidebarCollapsed ? "0 8px 12px" : "0 14px 14px",
           }}
         >
-          <div style={{ fontSize: 11, color: C.textMuted, fontFamily: font, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>
-            Current Plan
-          </div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span
+          <button
+            type="button"
+            onClick={() => setIsAccountOpen((prev) => !prev)}
+            title={isSidebarCollapsed ? "Account" : undefined}
+            style={{
+              width: "100%",
+              border: `1px solid ${C.border}`,
+              background: isAccountOpen ? C.card : C.surface,
+              color: C.text,
+              borderRadius: 12,
+              padding: isSidebarCollapsed ? "10px 6px" : "10px 12px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: isSidebarCollapsed ? "center" : "space-between",
+              gap: 10,
+              cursor: "pointer",
+              textAlign: "left",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+              <div
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: "50%",
+                  background: "linear-gradient(135deg, #1d4ed8, #0f766e)",
+                  color: "#fff",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  flexShrink: 0,
+                }}
+              >
+                {getUserInitials(session?.user)}
+              </div>
+              {!isSidebarCollapsed && (
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: C.white,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {session?.user?.name || "Account"}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: C.textMuted,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {PLAN_LIMITS[plan].name} plan
+                  </div>
+                </div>
+              )}
+            </div>
+            {!isSidebarCollapsed && (
+              <span style={{ color: C.textMuted, fontSize: 13 }}>{isAccountOpen ? "-" : "+"}</span>
+            )}
+          </button>
+
+          {!isSidebarCollapsed && isAccountOpen && (
+            <div
               style={{
-                fontFamily: font,
-                fontSize: 14,
-                fontWeight: 700,
-                color: plan === "business" ? C.warn : plan === "starter" ? C.accent : C.textDim,
+                marginTop: 10,
+                border: `1px solid ${C.border}`,
+                borderRadius: 12,
+                background: C.card,
+                padding: 12,
+                display: "grid",
+                gap: 10,
               }}
             >
-              {PLAN_LIMITS[plan].name}
-            </span>
-            {plan === "free" && (
-              <a
-                href="/pricing"
-                style={{ fontSize: 11, color: C.accent, fontFamily: font, textDecoration: "none" }}
-              >
-                Upgrade ↗
-              </a>
-            )}
-          </div>
-        </div>
+              <div>
+                <div style={{ fontSize: 11, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>
+                  Account
+                </div>
+                <div style={{ fontSize: 14, color: C.white, fontWeight: 700 }}>
+                  {session?.user?.name || "PODTrackerPro user"}
+                </div>
+                <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>
+                  {session?.user?.email || "No email available"}
+                </div>
+              </div>
 
-        <div
-          style={{
-            padding: "12px 20px",
-            fontSize: 19,
-            color: C.textMuted,
-            fontFamily: font,
-          }}
-        >
-          {data.niches.length} niches · {data.inventory.length} listings
+              <div
+                style={{
+                  background: C.surface,
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 10,
+                  padding: 10,
+                }}
+              >
+                <div style={{ fontSize: 11, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>
+                  Plan
+                </div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <span
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 700,
+                      color: plan === "business" ? C.warn : plan === "starter" ? C.accent : C.textDim,
+                    }}
+                  >
+                    {PLAN_LIMITS[plan].name}
+                  </span>
+                  <span style={{ fontSize: 12, color: C.textMuted }}>{PLAN_LIMITS[plan].price}</span>
+                </div>
+                {plan === "free" && (
+                  <a
+                    href="/pricing"
+                    style={{ display: "inline-block", marginTop: 8, fontSize: 12, color: C.accent, textDecoration: "none" }}
+                  >
+                    Upgrade
+                  </a>
+                )}
+              </div>
+
+              <div style={{ display: "grid", gap: 8 }}>
+                {plan !== "free" && (
+                  <Btn variant="ghost" onClick={handleOpenBilling} disabled={isBillingLoading} style={{ width: "100%", justifyContent: "center" }}>
+                    {isBillingLoading ? "Opening billing..." : "Billing"}
+                  </Btn>
+                )}
+                <Btn variant="danger" onClick={handleSidebarSignOut} style={{ width: "100%", justifyContent: "center" }}>
+                  Logout
+                </Btn>
+              </div>
+            </div>
+          )}
         </div>
       </nav>
+      <button
+        onClick={() => setIsSidebarCollapsed((prev) => !prev)}
+        aria-label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        style={{
+          position: "absolute",
+          top: "50%",
+          right: -14,
+          transform: "translateY(-50%)",
+          width: 28,
+          height: 72,
+          border: `1px solid ${C.border}`,
+          borderLeft: "none",
+          borderRadius: "0 10px 10px 0",
+          background: C.card,
+          color: C.textDim,
+          cursor: "pointer",
+          fontFamily: font,
+          fontSize: 16,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          boxShadow: "0 6px 18px rgba(0, 0, 0, 0.28)",
+        }}
+      >
+        {isSidebarCollapsed ? ">" : "<"}
+      </button>
+      </div>
 
       <main style={{ flex: 1, padding: 32, overflowY: "auto", maxHeight: "100vh" }}>
-        {tab === "dashboard" && <DashboardView data={data} setTab={setTab} plan={plan} usage={usage} />}
+        {tab === "dashboard" && <DashboardView data={data} setTab={setTab} plan={plan} usage={usage} openNicheHome={openNicheHome} />}
+        {tab === "niche-home" && (
+          <NicheHomeView
+            data={data}
+            selectedNicheContext={selectedNicheContext}
+            setSelectedNicheContext={setSelectedNicheContext}
+            openNicheHome={openNicheHome}
+            plan={plan}
+            usage={usage}
+            setUsage={setUsage}
+            loading={loading}
+            setLoading={setLoading}
+            addItem={addItem}
+            updateItem={updateItem}
+          />
+        )}
         {tab === "niches" && (
           <NichesView
             data={data}
@@ -1743,6 +2925,7 @@ export default function PODTracker() {
             plan={plan}
             usage={usage}
             setUsage={setUsage}
+            openNicheHome={openNicheHome}
           />
         )}
         {tab === "keywords" && (
@@ -1757,8 +2940,10 @@ export default function PODTracker() {
             plan={plan}
             usage={usage}
             setUsage={setUsage}
+            openNicheHome={openNicheHome}
           />
         )}
+        {tab === "dates" && <DatesView data={data} setTab={setTab} update={update} />}
         {tab === "trends" && (
           <TrendsView
             data={data}
@@ -1774,31 +2959,40 @@ export default function PODTracker() {
           />
         )}
         {tab === "briefs" && (
-          <BriefsView data={data} addItem={addItem} deleteItem={deleteItem} updateItem={updateItem} loading={loading} setLoading={setLoading} plan={plan} usage={usage} setUsage={setUsage} />
+          <BriefsView data={data} addItem={addItem} deleteItem={deleteItem} updateItem={updateItem} loading={loading} setLoading={setLoading} plan={plan} usage={usage} setUsage={setUsage} openNicheHome={openNicheHome} />
         )}
         {tab === "seo" && (
-          <SEOView data={data} addItem={addItem} deleteItem={deleteItem} updateItem={updateItem} loading={loading} setLoading={setLoading} plan={plan} usage={usage} setUsage={setUsage} />
+          <SEOView data={data} addItem={addItem} deleteItem={deleteItem} updateItem={updateItem} loading={loading} setLoading={setLoading} plan={plan} usage={usage} setUsage={setUsage} openNicheHome={openNicheHome} />
+        )}
+        {tab === "ideas" && (
+            <IdeasView data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} update={update} openNicheHome={openNicheHome} />
         )}
         {tab === "inventory" && (
           <InventoryView data={data} addItem={addItem} deleteItem={deleteItem} updateItem={updateItem} importItems={importItems} plan={plan} />
         )}
+        {tab === "reports" && <ReportsView data={data} />}
         {tab === "trademark" && <TrademarkView loading={loading} setLoading={setLoading} plan={plan} usage={usage} setUsage={setUsage} />}
         {tab === "research" && <ResearchView data={data} loading={loading} setLoading={setLoading} plan={plan} usage={usage} setUsage={setUsage} />}
         {tab === "guide" && <GuideView plan={plan} />}
-        {tab === "improve-ptp" && <CannyFeedback />}
       </main>
     </div>
   );
 }
 
 // ─── DASHBOARD VIEW ────────────────────────────
-function DashboardView({ data, setTab, plan, usage }) {
+function DashboardView({ data, setTab, plan, usage, openNicheHome }) {
+  const [platformView, setPlatformView] = useState("counts");
   const activeListings = data.inventory.filter((i) => i.status === "Active").length;
   const byPlatform = PLATFORMS.map((p) => ({
     platform: p,
     count: data.inventory.filter((i) => i.platform === p).length,
   }));
+  const platformDistribution = buildPlatformDistribution(data);
+  const platformTotal = platformDistribution.reduce((sum, item) => sum + item.count, 0);
+  const pieRadius = 78;
+  const pieCircumference = 2 * Math.PI * pieRadius;
   const recentTrends = data.trends.slice(-5).reverse();
+  const recentNiches = data.niches.slice(-5).reverse();
   const pendingBriefs = data.briefs.filter((b) => b.status !== "Listed" && b.status !== "Rejected").length;
   const limits = PLAN_LIMITS[plan];
 
@@ -1861,19 +3055,36 @@ function DashboardView({ data, setTab, plan, usage }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
         <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: 20 }}>
-          <h3
-            style={{
-              fontSize: 19,
-              fontFamily: font,
-              color: C.textMuted,
-              textTransform: "uppercase",
-              letterSpacing: 1,
-              margin: "0 0 16px",
-            }}
-          >
-            Listings by Platform
-          </h3>
-          {byPlatform.map((p) => (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 16 }}>
+            <h3
+              style={{
+                fontSize: 19,
+                fontFamily: font,
+                color: C.textMuted,
+                textTransform: "uppercase",
+                letterSpacing: 1,
+                margin: 0,
+              }}
+            >
+              Listings by Platform
+            </h3>
+            <button
+              onClick={() => setPlatformView((prev) => (prev === "counts" ? "chart" : "counts"))}
+              style={{
+                border: `1px solid ${C.border}`,
+                background: C.surface,
+                color: C.text,
+                borderRadius: 999,
+                padding: "6px 12px",
+                fontSize: 13,
+                fontFamily: font,
+                cursor: "pointer",
+              }}
+            >
+              {platformView === "counts" ? "Pie Chart" : "Counts"}
+            </button>
+          </div>
+          {platformView === "counts" && byPlatform.map((p) => (
             <div
               key={p.platform}
               style={{
@@ -1888,6 +3099,49 @@ function DashboardView({ data, setTab, plan, usage }) {
               <span style={{ fontSize: 21, fontWeight: 700, color: C.white, fontFamily: font }}>{p.count}</span>
             </div>
           ))}
+          {platformView === "chart" && (
+            <div style={{ display: "grid", gap: 16, justifyItems: "center" }}>
+              <svg viewBox="0 0 240 240" style={{ width: "100%", maxWidth: 240, height: "auto", display: "block" }} role="img" aria-label="Dashboard platform distribution chart">
+                <circle cx="120" cy="120" r={pieRadius} fill="none" stroke="rgba(148, 163, 184, 0.18)" strokeWidth="30" />
+                {platformDistribution.reduce((acc, item) => {
+                  const dashLength = platformTotal ? (item.count / platformTotal) * pieCircumference : 0;
+                  const node = (
+                    <circle
+                      key={item.platform}
+                      cx="120"
+                      cy="120"
+                      r={pieRadius}
+                      fill="none"
+                      stroke={item.color}
+                      strokeWidth="30"
+                      strokeDasharray={`${dashLength} ${pieCircumference - dashLength}`}
+                      strokeDashoffset={-acc.offset}
+                      transform="rotate(-90 120 120)"
+                    >
+                      <title>{`${item.label}: ${item.count} listings (${item.share.toFixed(1)}%)`}</title>
+                    </circle>
+                  );
+                  acc.offset += dashLength;
+                  acc.nodes.push(node);
+                  return acc;
+                }, { offset: 0, nodes: [] }).nodes}
+                <circle cx="120" cy="120" r="52" fill={C.card} />
+                <text x="120" y="114" textAnchor="middle" fontSize="12" fill={C.textDim}>Listings</text>
+                <text x="120" y="136" textAnchor="middle" fontSize="24" fontWeight="700" fill={C.text}>{platformTotal}</text>
+              </svg>
+              <div style={{ display: "grid", gap: 8, width: "100%" }}>
+                {platformDistribution.map((item) => (
+                  <div key={item.platform} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 8, color: C.text, fontSize: 14 }}>
+                      <span style={{ width: 10, height: 10, borderRadius: 999, background: item.color, display: "inline-block" }} />
+                      <span>{item.label}</span>
+                    </div>
+                    <div style={{ color: C.textDim, fontSize: 14 }}>{item.count}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: 20 }}>
@@ -1960,6 +3214,25 @@ function DashboardView({ data, setTab, plan, usage }) {
         </div>
       </div>
 
+      <div style={{ marginTop: 24, background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: 20 }}>
+        <h3 style={{ fontSize: 19, fontFamily: font, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1, margin: "0 0 16px" }}>
+          Recent Niches
+        </h3>
+        {recentNiches.length ? recentNiches.map((item, index) => (
+          <div key={`${item.niche}-${item.subNiche}-${index}`} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: index < recentNiches.length - 1 ? `1px solid ${C.border}` : "none" }}>
+            <div>
+              <NicheLink niche={item.niche} subNiche={item.subNiche} onOpen={openNicheHome} style={{ fontSize: 18 }}>
+                {item.niche}{item.subNiche ? ` / ${item.subNiche}` : ""}
+              </NicheLink>
+              <div style={{ color: C.textMuted, fontSize: 14 }}>{item.status || "Researching"}</div>
+            </div>
+            <Badge color={Number(item.score) >= 7 ? "success" : Number(item.score) >= 5 ? "warn" : "accent"}>
+              {item.score || "—"}
+            </Badge>
+          </div>
+        )) : <div style={{ color: C.textMuted }}>No niches tracked yet.</div>}
+      </div>
+
       <div style={{ marginTop: 24, display: "flex", gap: 12 }}>
         <Btn onClick={() => setTab("research")}>✦ AI Research</Btn>
         <Btn variant="ghost" onClick={() => setTab("niches")}>
@@ -2007,7 +3280,7 @@ function DCEBBar({ label, letter, value, reason }) {
 }
 
 // ─── NICHES VIEW ───────────────────────────────
-function NichesView({ data, addItem, deleteItem, updateItem, importItems, loading, setLoading, plan, usage, setUsage }) {
+function NichesView({ data, addItem, deleteItem, updateItem, importItems, loading, setLoading, plan, usage, setUsage, openNicheHome }) {
   const [niche, setNiche] = useState("");
   const [subNiche, setSubNiche] = useState("");
   const [dcebResult, setDcebResult] = useState(null);
@@ -2209,8 +3482,17 @@ Return JSON array: [{"subNiche":"...","demand":1-10,"demandReason":"short","comp
                 DCEB Analysis
               </div>
               <h2 style={{ fontSize: 23, fontWeight: 700, margin: 0, color: C.white }}>
-                {dcebResult.niche}
-                {dcebResult.subNiche && dcebResult.subNiche !== "General" ? ` › ${dcebResult.subNiche}` : ""}
+                <NicheLink niche={dcebResult.niche} onOpen={openNicheHome} style={{ fontSize: 23, fontWeight: 700 }}>
+                  {dcebResult.niche}
+                </NicheLink>
+                {dcebResult.subNiche && dcebResult.subNiche !== "General" ? (
+                  <>
+                    {" "}›{" "}
+                    <NicheLink niche={dcebResult.niche} subNiche={dcebResult.subNiche} onOpen={openNicheHome} style={{ fontSize: 23, fontWeight: 700 }}>
+                      {dcebResult.subNiche}
+                    </NicheLink>
+                  </>
+                ) : ""}
               </h2>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -2285,7 +3567,7 @@ Return JSON array: [{"subNiche":"...","demand":1-10,"demandReason":"short","comp
               marginBottom: 16,
             }}
           >
-            ◎ Sub-Niches for &quot;{niche}&quot;
+            ◎ Sub-Niches for <NicheLink niche={niche} onOpen={openNicheHome}>&quot;{niche}&quot;</NicheLink>
           </div>
           {subNicheResults.map((n, i) => {
             const compositeScore = ((n.demand + n.evergreen + n.brandability + (10 - n.competition)) / 4).toFixed(1);
@@ -2299,7 +3581,9 @@ Return JSON array: [{"subNiche":"...","demand":1-10,"demandReason":"short","comp
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <span style={{ color: C.white, fontWeight: 700, fontSize: 17 }}>{n.subNiche}</span>
+                    <NicheLink niche={niche} subNiche={n.subNiche} onOpen={openNicheHome} style={{ color: C.white, fontWeight: 700, fontSize: 17 }}>
+                      {n.subNiche}
+                    </NicheLink>
                     <Badge color={verdictColor(n.verdict)}>{n.verdict}</Badge>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -2343,8 +3627,16 @@ Return JSON array: [{"subNiche":"...","demand":1-10,"demandReason":"short","comp
 
       <Table
         columns={[
-          { key: "niche", label: "Niche" },
-          { key: "subNiche", label: "Sub-Niche" },
+          {
+            key: "niche",
+            label: "Niche",
+            render: (v, row) => <NicheLink niche={row.niche} onOpen={openNicheHome}>{v}</NicheLink>,
+          },
+          {
+            key: "subNiche",
+            label: "Sub-Niche",
+            render: (v, row) => <NicheLink niche={row.niche} subNiche={v} onOpen={openNicheHome}>{v || "General"}</NicheLink>,
+          },
           {
             key: "score",
             label: "Score",
@@ -2357,6 +3649,7 @@ Return JSON array: [{"subNiche":"...","demand":1-10,"demandReason":"short","comp
           {
             key: "status",
             label: "Status",
+            filterable: true,
             render: (v) => <Badge color={v === "Validated" ? "success" : v === "Paused" ? "danger" : "accent"}>{v}</Badge>,
           },
           { key: "notes", label: "Notes", maxW: 250 },
@@ -2373,7 +3666,7 @@ Return JSON array: [{"subNiche":"...","demand":1-10,"demandReason":"short","comp
 }
 
 // ─── KEYWORDS VIEW ─────────────────────────────
-function KeywordsView({ data, addItem, deleteItem, updateItem, importItems, loading, setLoading, plan, usage, setUsage }) {
+function KeywordsView({ data, addItem, deleteItem, updateItem, importItems, loading, setLoading, plan, usage, setUsage, openNicheHome }) {
   const [form, setForm] = useState({
     keyword: "",
     niche: "",
@@ -2554,15 +3847,20 @@ function KeywordsView({ data, addItem, deleteItem, updateItem, importItems, load
       <Table
         columns={[
           { key: "keyword", label: "Keyword" },
-          { key: "niche", label: "Niche" },
+          {
+            key: "niche",
+            label: "Niche",
+            render: (v, row) => <NicheLink niche={row.niche} subNiche={row.subNiche} onOpen={openNicheHome}>{v}</NicheLink>,
+          },
           {
             key: "volume",
             label: "Volume",
+            filterable: true,
             render: (v) => <Badge color={v === "High" ? "success" : v === "Medium" ? "warn" : "danger"}>{v}</Badge>,
           },
-          { key: "competition", label: "Competition" },
-          { key: "platforms", label: "Platforms", maxW: 200 },
-          { key: "status", label: "Status" },
+          { key: "competition", label: "Competition", filterable: true },
+          { key: "platforms", label: "Platforms", maxW: 200, filterable: true },
+          { key: "status", label: "Status", filterable: true },
           { key: "date", label: "Added" },
         ]}
         data={data.keywords}
@@ -2746,13 +4044,14 @@ function TrendsView({ data, addItem, deleteItem, updateItem, importItems, loadin
       <Table
         columns={[
           { key: "trend", label: "Trend" },
-          { key: "source", label: "Source" },
-          { key: "category", label: "Category" },
-          { key: "seasonality", label: "Season" },
+          { key: "source", label: "Source", filterable: true },
+          { key: "category", label: "Category", filterable: true },
+          { key: "seasonality", label: "Season", filterable: true },
           { key: "peakMonths", label: "Peak" },
           {
             key: "score",
             label: "Score",
+            minW: 96,
             render: (v) => <Badge color={v >= 7 ? "success" : v >= 5 ? "warn" : "danger"}>{v + " of 10"}</Badge>,
           },
           { key: "notes", label: "Notes", maxW: 250 },
@@ -2769,7 +4068,7 @@ function TrendsView({ data, addItem, deleteItem, updateItem, importItems, loadin
 }
 
 // ─── DESIGN BRIEFS VIEW ────────────────────────
-function BriefsView({ data, addItem, deleteItem, updateItem, loading, setLoading, plan, usage, setUsage }) {
+function BriefsView({ data, addItem, deleteItem, updateItem, loading, setLoading, plan, usage, setUsage, openNicheHome }) {
   const [form, setForm] = useState({
     niche: "",
     subNiche: "",
@@ -2915,13 +4214,18 @@ function BriefsView({ data, addItem, deleteItem, updateItem, loading, setLoading
       <Table
         columns={[
           { key: "id", label: "ID" },
-          { key: "niche", label: "Niche" },
+          {
+            key: "niche",
+            label: "Niche",
+            render: (v, row) => <NicheLink niche={row.niche} subNiche={row.subNiche} onOpen={openNicheHome}>{v}</NicheLink>,
+          },
           { key: "slogan", label: "Slogan" },
           { key: "style", label: "Style" },
-          { key: "platform", label: "Platform" },
+          { key: "platform", label: "Platform", filterable: true },
           {
             key: "status",
             label: "Status",
+            filterable: true,
             render: (v) => <Badge color={v === "Ready" ? "success" : v === "Rejected" ? "danger" : "accent"}>{v}</Badge>,
           },
           { key: "concept", label: "Concept", maxW: 300 },
@@ -2938,7 +4242,7 @@ function BriefsView({ data, addItem, deleteItem, updateItem, loading, setLoading
 }
 
 // ─── SEO VIEW ──────────────────────────────────
-function SEOView({ data, addItem, deleteItem, updateItem, loading, setLoading, plan, usage, setUsage }) {
+function SEOView({ data, addItem, deleteItem, updateItem, loading, setLoading, plan, usage, setUsage, openNicheHome }) {
   const [designId, setDesignId] = useState("");
   const [platform, setPlatform] = useState("Amazon Merch");
   const [generated, setGenerated] = useState(null);
@@ -3004,7 +4308,7 @@ function SEOView({ data, addItem, deleteItem, updateItem, loading, setLoading, p
         </div>
         {brief && (
           <div style={{ fontSize: 15, color: C.textDim, fontFamily: font }}>
-            {brief.id}: &quot;{brief.slogan}&quot; · {brief.niche} · {brief.style}
+            {brief.id}: &quot;{brief.slogan}&quot; · <NicheLink niche={brief.niche} subNiche={brief.subNiche} onOpen={openNicheHome}>{brief.niche}</NicheLink> · {brief.style}
           </div>
         )}
       </div>
@@ -3133,7 +4437,7 @@ function SEOView({ data, addItem, deleteItem, updateItem, loading, setLoading, p
       <Table
         columns={[
           { key: "designId", label: "Brief" },
-          { key: "platform", label: "Platform" },
+          { key: "platform", label: "Platform", filterable: true },
           { key: "title", label: "Title", maxW: 250 },
           { key: "bullet1", label: "Bullet 1", maxW: 200 },
           { key: "description", label: "Description", maxW: 200 },
@@ -3150,6 +4454,1283 @@ function SEOView({ data, addItem, deleteItem, updateItem, loading, setLoading, p
 }
 
 // ─── INVENTORY VIEW ────────────────────────────
+
+const REPORT_SERIES_META = {
+  niches: { label: "Niches", color: "#2563eb", accessor: (item) => item?.date },
+  inventory: { label: "Listings", color: "#f97316", accessor: (item) => item?.dateListed },
+  keywords: { label: "Keywords", color: "#7c3aed", accessor: (item) => item?.date },
+  trends: { label: "Trends", color: "#0f766e", accessor: (item) => item?.date },
+};
+
+const NICHE_STATUS_COLORS = {
+  Researching: "#60a5fa",
+  Validated: "#22c55e",
+  Designing: "#f59e0b",
+};
+
+const PLATFORM_REPORT_COLORS = {
+  "Amazon Merch": "#f97316",
+  Etsy: "#ec4899",
+  Redbubble: "#ef4444",
+  "TeeSpring/Spring": "#8b5cf6",
+  TeePublic: "#14b8a6",
+  Other: "#94a3b8",
+};
+
+function toISODateKey(value) {
+  if (!value) return null;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+    const parsed = new Date(trimmed);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+    return null;
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString().slice(0, 10);
+}
+
+function startOfWeek(date) {
+  const next = new Date(date);
+  const day = next.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  next.setDate(next.getDate() + diff);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function formatPeriodKey(date, granularity) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+
+  if (granularity === "year") return `${year}`;
+  if (granularity === "month") return `${year}-${month}`;
+  if (granularity === "week") {
+    const weekStart = startOfWeek(date);
+    return weekStart.toISOString().slice(0, 10);
+  }
+  return `${year}-${month}-${day}`;
+}
+
+function formatPeriodLabel(periodKey, granularity) {
+  if (granularity === "year") return periodKey;
+  if (granularity === "month") return periodKey.slice(2);
+  if (granularity === "week") return `Wk ${periodKey.slice(5)}`;
+  return periodKey.slice(5);
+}
+
+function buildPeriodKeys(granularity) {
+  const today = new Date();
+  const config = {
+    day: 30,
+    week: 12,
+    month: 12,
+    year: 5,
+  };
+
+  if (granularity === "day") {
+    return Array.from({ length: config.day }, (_, index) => {
+      const date = new Date(today);
+      date.setDate(today.getDate() - (config.day - 1 - index));
+      return formatPeriodKey(date, "day");
+    });
+  }
+
+  if (granularity === "week") {
+    const currentWeek = startOfWeek(today);
+    return Array.from({ length: config.week }, (_, index) => {
+      const date = new Date(currentWeek);
+      date.setDate(currentWeek.getDate() - (config.week - 1 - index) * 7);
+      return formatPeriodKey(date, "week");
+    });
+  }
+
+  if (granularity === "month") {
+    return Array.from({ length: config.month }, (_, index) => {
+      const date = new Date(today.getFullYear(), today.getMonth() - (config.month - 1 - index), 1);
+      return formatPeriodKey(date, "month");
+    });
+  }
+
+  return Array.from({ length: config.year }, (_, index) => {
+    const date = new Date(today.getFullYear() - (config.year - 1 - index), 0, 1);
+    return formatPeriodKey(date, "year");
+  });
+}
+
+function buildItemsAddedSeries(data, granularity) {
+  return Object.entries(REPORT_SERIES_META).map(([key, meta]) => {
+    const counts = new Map();
+    for (const item of data?.[key] || []) {
+      const dateKey = toISODateKey(meta.accessor(item));
+      if (!dateKey) continue;
+      const periodKey = formatPeriodKey(new Date(`${dateKey}T00:00:00`), granularity);
+      counts.set(periodKey, (counts.get(periodKey) || 0) + 1);
+    }
+    return {
+      key,
+      label: meta.label,
+      color: meta.color,
+      counts,
+      total: Array.from(counts.values()).reduce((sum, count) => sum + count, 0),
+    };
+  });
+}
+
+function normalizeNicheMatch(value) {
+  return `${value || ""}`.trim().toLowerCase();
+}
+
+function deriveNichePlatform(niche, data) {
+  const nicheKeys = [
+    normalizeNicheMatch(niche?.niche),
+    normalizeNicheMatch(niche?.subNiche),
+    normalizeNicheMatch([niche?.niche, niche?.subNiche].filter(Boolean).join(" ")),
+  ].filter(Boolean);
+
+  const platformCounts = new Map();
+  const recordPlatform = (platform) => {
+    if (!platform) return;
+    const normalized = `${platform}`.trim();
+    if (!normalized) return;
+    platformCounts.set(normalized, (platformCounts.get(normalized) || 0) + 1);
+  };
+
+  for (const keyword of data?.keywords || []) {
+    const keywordKeys = [normalizeNicheMatch(keyword?.niche), normalizeNicheMatch(keyword?.subNiche)].filter(Boolean);
+    if (!keywordKeys.some((key) => nicheKeys.includes(key))) continue;
+    `${keyword?.platforms || ""}`.split(",").map((value) => value.trim()).filter(Boolean).forEach(recordPlatform);
+  }
+
+  for (const brief of data?.briefs || []) {
+    const briefKeys = [normalizeNicheMatch(brief?.niche), normalizeNicheMatch(brief?.subNiche)].filter(Boolean);
+    if (!briefKeys.some((key) => nicheKeys.includes(key))) continue;
+    recordPlatform(brief?.platform);
+  }
+
+  for (const seo of data?.seo || []) {
+    const title = normalizeNicheMatch(seo?.title);
+    if (!title || !nicheKeys.some((key) => title.includes(key))) continue;
+    recordPlatform(seo?.platform);
+  }
+
+  for (const listing of data?.inventory || []) {
+    const design = normalizeNicheMatch(listing?.design);
+    const notes = normalizeNicheMatch(listing?.notes);
+    if (!nicheKeys.some((key) => design.includes(key) || notes.includes(key))) continue;
+    recordPlatform(listing?.platform);
+  }
+
+  const sorted = Array.from(platformCounts.entries()).sort((a, b) => b[1] - a[1]);
+  return sorted[0]?.[0] || "Other";
+}
+
+function buildNicheOpportunityPoints(data) {
+  return (data?.niches || [])
+    .filter((item) => Number.isFinite(Number(item?.competition)) && Number.isFinite(Number(item?.demand)))
+    .map((item, index) => ({
+      id: `${normalizeNicheMatch(item?.niche)}-${normalizeNicheMatch(item?.subNiche)}-${index}`,
+      name: item?.subNiche || item?.niche || `Niche ${index + 1}`,
+      niche: item?.niche || "",
+      subNiche: item?.subNiche || "",
+      competition: Number(item?.competition),
+      demand: Number(item?.demand),
+      status: item?.status || "Researching",
+      platform: deriveNichePlatform(item, data),
+      score: item?.score || "",
+    }));
+}
+
+function buildPlatformDistribution(data) {
+  const platformOrder = [...PLATFORMS];
+  const aliasMap = {
+    Spring: "TeeSpring/Spring",
+    TeeSpring: "TeeSpring/Spring",
+    "TeeSpring/Spring": "TeeSpring/Spring",
+  };
+
+  const counts = new Map(platformOrder.map((platform) => [platform, 0]));
+  for (const item of data?.inventory || []) {
+    const normalized = aliasMap[item?.platform] || item?.platform;
+    if (!counts.has(normalized)) continue;
+    counts.set(normalized, (counts.get(normalized) || 0) + 1);
+  }
+
+  const total = Array.from(counts.values()).reduce((sum, count) => sum + count, 0);
+  return platformOrder.map((platform) => ({
+    platform,
+    label: platform === "TeeSpring/Spring" ? "Spring" : platform,
+    count: counts.get(platform) || 0,
+    share: total ? ((counts.get(platform) || 0) / total) * 100 : 0,
+    color: PLATFORM_REPORT_COLORS[platform] || PLATFORM_REPORT_COLORS.Other,
+  }));
+}
+
+function buildUpcomingDateRows(referenceDate = new Date(), customDates = []) {
+  const today = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), referenceDate.getDate());
+  const dateItems = [
+    ...POD_DATES.map((item) => ({ ...item, source: "built-in" })),
+    ...(customDates || []).map((item, index) => ({
+      id: item.id || `custom-date-${index + 1}`,
+      month: item.month,
+      monthIndex: MONTH_TO_INDEX[item.month],
+      rawDay: item.rawDay,
+      dayNumber: Number(String(item.rawDay).split("/")[0]),
+      type: item.type,
+      event: item.event,
+      ideas: item.ideas,
+      niche: item.niche || "",
+      source: "custom",
+    })),
+  ];
+
+  return dateItems.map((item) => {
+    let nextOccurrence = new Date(today.getFullYear(), item.monthIndex, item.dayNumber);
+    if (nextOccurrence < today) {
+      nextOccurrence = new Date(today.getFullYear() + 1, item.monthIndex, item.dayNumber);
+    }
+
+    const daysAway = Math.round((nextOccurrence - today) / (1000 * 60 * 60 * 24));
+
+    return {
+      ...item,
+      typeLabel: item.type === "holiday" ? "Holiday" : "Niche Day",
+      dateLabel: `${item.month} ${item.rawDay}`,
+      sourceLabel: item.source === "custom" ? "Custom" : "Built-in",
+      sortDate: nextOccurrence,
+      sortTime: nextOccurrence.getTime(),
+      daysAway,
+      daysAwayLabel: daysAway === 0 ? "Today" : daysAway === 1 ? "1 day away" : `${daysAway} days away`,
+    };
+  }).sort((left, right) => left.sortTime - right.sortTime || left.event.localeCompare(right.event));
+}
+
+function normalizeLookupText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getLookupTerms(dateItem) {
+  const parts = [dateItem.event, dateItem.ideas, dateItem.month];
+  const tokens = normalizeLookupText(parts.join(" "))
+    .split(" ")
+    .filter((token) => token.length >= 4);
+
+  return Array.from(new Set(tokens));
+}
+
+function itemMatchesLookup(text, terms) {
+  const haystack = normalizeLookupText(text);
+  return terms.some((term) => haystack.includes(term));
+}
+
+function buildDateConnections(dateItem, data) {
+  const terms = getLookupTerms(dateItem);
+
+  const keywords = (data?.keywords || []).filter((item) =>
+    itemMatchesLookup([item.keyword, item.niche, item.subNiche, item.platforms].join(" "), terms)
+  );
+
+  const trends = (data?.trends || []).filter((item) =>
+    itemMatchesLookup([item.trend, item.category, item.notes, item.peakMonths, item.source].join(" "), terms)
+  );
+
+  const niches = Array.from(
+    new Set(
+      [
+        dateItem.niche,
+        ...keywords.map((item) => normalizeNicheOptionLabel(item?.niche)).filter(Boolean),
+      ].filter(Boolean)
+    )
+  ).sort();
+
+  return { keywords, trends, niches };
+}
+
+function DatesView({ data, setTab, update }) {
+  const [selectedWindowDays, setSelectedWindowDays] = useState(90);
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [nicheFilter, setNicheFilter] = useState("all");
+  const [selectedDateId, setSelectedDateId] = useState(null);
+  const [customForm, setCustomForm] = useState({
+    month: "January",
+    rawDay: "",
+    type: "niche",
+    event: "",
+    ideas: "",
+    niche: "",
+  });
+  const tableRef = useRef(null);
+
+  const customNicheOptions = useMemo(
+    () =>
+      Array.from(
+        new Set((data?.customNiches || []).map((item) => normalizeNicheOptionLabel(item)).filter(Boolean))
+      ).sort(),
+    [data?.customNiches]
+  );
+
+  const nicheOptions = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...DEFAULT_NICHE_OPTIONS,
+          ...(data?.niches || []).map((item) => normalizeNicheOptionLabel(item?.niche)).filter(Boolean),
+          ...customNicheOptions,
+        ])
+      ).sort(),
+    [customNicheOptions, data?.niches]
+  );
+
+  const upcomingDates = useMemo(
+    () => buildUpcomingDateRows(new Date(), data?.customDates || []),
+    [data?.customDates]
+  );
+  const connectedDates = useMemo(
+    () =>
+      upcomingDates.map((item) => ({
+        ...item,
+        connections: buildDateConnections(item, data),
+      })),
+    [data, upcomingDates]
+  );
+
+  const countsByWindow = useMemo(
+    () =>
+      DATE_KPI_WINDOWS.map((days) => {
+        const items = connectedDates.filter((item) => item.daysAway <= days);
+        return {
+          days,
+          total: items.length,
+          holidays: items.filter((item) => item.type === "holiday").length,
+          nicheDays: items.filter((item) => item.type === "niche").length,
+        };
+      }),
+    [connectedDates]
+  );
+
+  const filteredRows = useMemo(() => {
+    return connectedDates.filter((item) => {
+      const matchesWindow = selectedWindowDays ? item.daysAway <= selectedWindowDays : true;
+      const matchesType = typeFilter === "all" ? true : item.type === typeFilter;
+      const matchesNiche =
+        nicheFilter === "all"
+          ? true
+          : (item.connections?.niches || []).some(
+              (niche) => normalizeNicheOptionLabel(niche) === normalizeNicheOptionLabel(nicheFilter)
+            );
+      return matchesWindow && matchesType && matchesNiche;
+    });
+  }, [connectedDates, nicheFilter, selectedWindowDays, typeFilter]);
+
+  const activeSummary = countsByWindow.find((item) => item.days === selectedWindowDays);
+  const selectedDate = filteredRows.find((item) => item.id === selectedDateId) || null;
+
+  const jumpToTable = (days) => {
+    setSelectedWindowDays(days);
+    tableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const addCustomDate = async () => {
+    if (!customForm.rawDay.trim() || !customForm.event.trim()) {
+      alert("Add at least a date and event name.");
+      return;
+    }
+
+    const nextCustomDates = [
+      ...(data?.customDates || []),
+        {
+          id: generateTrackerId("custom-date"),
+          month: customForm.month,
+          rawDay: customForm.rawDay.trim(),
+          type: customForm.type,
+          event: customForm.event.trim(),
+          ideas: customForm.ideas.trim(),
+          niche: customForm.niche.trim(),
+        },
+      ];
+
+    await update("customDates", nextCustomDates);
+    setCustomForm({
+      month: "January",
+      rawDay: "",
+      type: "niche",
+      event: "",
+      ideas: "",
+      niche: "",
+    });
+  };
+
+  const deleteCustomDate = async (index) => {
+    const nextCustomDates = (data?.customDates || []).filter((_, itemIndex) => itemIndex !== index);
+    await update("customDates", nextCustomDates);
+  };
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <div
+        style={{
+          background: C.card,
+          border: `1px solid ${C.border}`,
+          borderRadius: 10,
+          padding: 20,
+        }}
+      >
+        <div style={{ display: "grid", gap: 6 }}>
+          <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".16em", color: C.muted }}>Research Dates</div>
+          <h1 style={{ margin: 0, fontSize: 27, fontWeight: 700, fontFamily: sansFont }}>Dates</h1>
+          <div style={{ color: C.textDim, fontSize: 16 }}>
+            Track holiday moments and niche call-out dates without starting in calendar mode.
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+        {countsByWindow.map((item) => {
+          const isActive = selectedWindowDays === item.days;
+          return (
+            <div
+              key={item.days}
+              style={{
+                background: C.card,
+                border: `1px solid ${isActive ? C.accent : C.border}`,
+                borderRadius: 10,
+                padding: 18,
+                borderTop: `2px solid ${isActive ? C.accent : C.border}`,
+                boxShadow: isActive ? "0 0 0 1px rgba(59, 130, 246, 0.18)" : "none",
+              }}
+            >
+              <div style={{ display: "grid", gap: 10 }}>
+                <div style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, color: C.textMuted }}>
+                  Next {item.days} Days
+                </div>
+                <button
+                  onClick={() => jumpToTable(item.days)}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: C.white,
+                    fontSize: 34,
+                    fontWeight: 800,
+                    padding: 0,
+                    textAlign: "left",
+                    cursor: "pointer",
+                    fontFamily: sansFont,
+                  }}
+                >
+                  {item.total}
+                </button>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Badge color="success">{item.holidays} holidays</Badge>
+                  <Badge color="accent">{item.nicheDays} niche days</Badge>
+                </div>
+                <div style={{ fontSize: 14, color: C.textDim }}>
+                  Click the number to filter the table to this time window.
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div
+        style={{
+          background: C.card,
+          border: `1px solid ${C.border}`,
+          borderRadius: 10,
+          padding: 18,
+          display: "grid",
+          gap: 14,
+        }}
+      >
+        <div style={{ display: "grid", gap: 6 }}>
+          <h2 style={{ margin: 0, fontSize: 22 }}>Add Custom Date</h2>
+          <div style={{ color: C.textDim, fontSize: 14 }}>
+            Add your own seasonal launch dates, niche anniversaries, or promo windows.
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 150px 1.2fr", gap: 12 }}>
+          <Select
+            value={customForm.month}
+            onChange={(value) => setCustomForm((prev) => ({ ...prev, month: value }))}
+            options={Object.keys(MONTH_TO_INDEX)}
+          />
+          <Input
+            value={customForm.rawDay}
+            onChange={(value) => setCustomForm((prev) => ({ ...prev, rawDay: value }))}
+            placeholder="Day"
+          />
+          <Select
+            value={customForm.type}
+            onChange={(value) => setCustomForm((prev) => ({ ...prev, type: value }))}
+            options={["holiday", "niche"]}
+          />
+          <Input
+            value={customForm.event}
+            onChange={(value) => setCustomForm((prev) => ({ ...prev, event: value }))}
+            placeholder="Event name"
+          />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 12, alignItems: "start" }}>
+          <Select
+            value={customForm.niche}
+            onChange={(value) => setCustomForm((prev) => ({ ...prev, niche: value }))}
+            options={nicheOptions}
+            placeholder="Related niche"
+          />
+          <Input
+            value={customForm.ideas}
+            onChange={(value) => setCustomForm((prev) => ({ ...prev, ideas: value }))}
+            placeholder="POD design ideas"
+          />
+          <Btn onClick={addCustomDate}>+ Add Custom Date</Btn>
+        </div>
+        {(data?.customDates || []).length > 0 && (
+          <div style={{ display: "grid", gap: 10 }}>
+            <div style={{ fontSize: 14, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>
+              Your Custom Dates
+            </div>
+            <Table
+              columns={[
+                { key: "month", label: "Month" },
+                { key: "rawDay", label: "Date" },
+                { key: "niche", label: "Niche", maxW: 180 },
+                {
+                  key: "type",
+                  label: "Type",
+                  render: (value) => (
+                    <Badge color={value === "holiday" ? "warn" : "accent"}>
+                      {value === "holiday" ? "Holiday" : "Niche Day"}
+                    </Badge>
+                  ),
+                },
+                { key: "event", label: "Event", maxW: 240 },
+                { key: "ideas", label: "Ideas", maxW: 260 },
+              ]}
+              data={data.customDates}
+              onDelete={(index) => deleteCustomDate(index)}
+            />
+          </div>
+        )}
+      </div>
+
+      <div
+        style={{
+          background: C.card,
+          border: `1px solid ${C.border}`,
+          borderRadius: 10,
+          padding: 18,
+          display: "grid",
+          gap: 14,
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ display: "grid", gap: 6 }}>
+            <h2 style={{ margin: 0, fontSize: 22 }}>Upcoming Call-Out Dates</h2>
+            <div style={{ color: C.textDim, fontSize: 14 }}>
+              Showing {filteredRows.length} item{filteredRows.length === 1 ? "" : "s"}
+              {activeSummary ? ` in the next ${activeSummary.days} days` : ""}.
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {[
+              { key: "all", label: "All" },
+              { key: "holiday", label: "Holidays" },
+              { key: "niche", label: "Niche Days" },
+            ].map((option) => {
+              const isActive = typeFilter === option.key;
+              return (
+                <button
+                  key={option.key}
+                  onClick={() => setTypeFilter(option.key)}
+                  style={{
+                    border: `1px solid ${isActive ? C.accent : C.border}`,
+                    background: isActive ? C.accentDim : C.surface,
+                    color: isActive ? C.white : C.textDim,
+                    borderRadius: 999,
+                    padding: "8px 12px",
+                    cursor: "pointer",
+                    fontSize: 13,
+                    fontFamily: font,
+                  }}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+            <FormControl size="small" sx={{ minWidth: 220 }}>
+              <MuiSelect value={nicheFilter} onChange={(event) => setNicheFilter(event.target.value)}>
+                <MenuItem value="all">All niches</MenuItem>
+                {nicheOptions.map((option) => (
+                  <MenuItem key={option} value={option}>
+                    {option}
+                  </MenuItem>
+                ))}
+              </MuiSelect>
+            </FormControl>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <Badge color="warn">{activeSummary?.holidays || 0} holidays in range</Badge>
+          <Badge color="accent">{activeSummary?.nicheDays || 0} niche days in range</Badge>
+          <Badge color="success">{filteredRows.length} rows visible</Badge>
+        </div>
+      </div>
+
+      {selectedDate && (
+        <div
+          style={{
+            background: C.card,
+            border: `1px solid ${C.border}`,
+            borderRadius: 10,
+            padding: 18,
+            display: "grid",
+            gap: 14,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ display: "grid", gap: 6 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <Badge color={selectedDate.type === "holiday" ? "warn" : "accent"}>
+                  {selectedDate.typeLabel}
+                </Badge>
+                <span style={{ color: C.textDim, fontSize: 14 }}>{selectedDate.dateLabel}</span>
+              </div>
+              <h3 style={{ margin: 0, fontSize: 22 }}>{selectedDate.event}</h3>
+              <div style={{ color: C.textDim, fontSize: 14 }}>{selectedDate.ideas}</div>
+            </div>
+            <Btn variant="ghost" onClick={() => setSelectedDateId(null)}>
+              Clear selection
+            </Btn>
+          </div>
+
+          <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
+            <div
+              style={{
+                background: C.surface,
+                border: `1px solid ${C.border}`,
+                borderRadius: 10,
+                padding: 16,
+                display: "grid",
+                gap: 10,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                <div style={{ fontSize: 16, fontWeight: 700 }}>Related Keywords</div>
+                <Btn variant="ghost" onClick={() => setTab("keywords")}>
+                  Open Keywords
+                </Btn>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {selectedDate.connections.keywords.length ? (
+                  selectedDate.connections.keywords.slice(0, 6).map((item, index) => (
+                    <Badge key={`${item.keyword}-${index}`} color="accent">
+                      {item.keyword}
+                    </Badge>
+                  ))
+                ) : (
+                  <span style={{ color: C.textDim, fontSize: 14 }}>No keyword matches yet.</span>
+                )}
+              </div>
+            </div>
+
+            <div
+              style={{
+                background: C.surface,
+                border: `1px solid ${C.border}`,
+                borderRadius: 10,
+                padding: 16,
+                display: "grid",
+                gap: 10,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                <div style={{ fontSize: 16, fontWeight: 700 }}>Related Trends</div>
+                <Btn variant="ghost" onClick={() => setTab("trends")}>
+                  Open Trends
+                </Btn>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {selectedDate.connections.trends.length ? (
+                  selectedDate.connections.trends.slice(0, 6).map((item, index) => (
+                    <Badge key={`${item.trend}-${index}`} color="success">
+                      {item.trend}
+                    </Badge>
+                  ))
+                ) : (
+                  <span style={{ color: C.textDim, fontSize: 14 }}>No trend matches yet.</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div ref={tableRef}>
+        <Table
+          columns={[
+            {
+              key: "typeLabel",
+              label: "Type",
+              filterOptions: ["Holiday", "Niche Day"],
+              render: (value, row) => (
+                <Badge color={row.type === "holiday" ? "warn" : "accent"}>{value}</Badge>
+              ),
+            },
+            {
+              key: "sourceLabel",
+              label: "Source",
+              render: (value, row) => (
+                <Badge color={row.source === "custom" ? "success" : "accent"}>{value}</Badge>
+              ),
+            },
+            {
+              key: "nicheTags",
+              label: "Niche",
+              maxW: 220,
+              render: (_, row) =>
+                row.connections?.niches?.length ? (
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {row.connections.niches.slice(0, 2).map((niche) => (
+                      <Badge key={niche} color="accent">{niche}</Badge>
+                    ))}
+                    {row.connections.niches.length > 2 && (
+                      <span style={{ color: C.textDim, fontSize: 13 }}>+{row.connections.niches.length - 2}</span>
+                    )}
+                  </div>
+                ) : (
+                  <span style={{ color: C.textDim }}>-</span>
+                ),
+            },
+            { key: "month", label: "Month", filterable: true },
+            { key: "rawDay", label: "Date" },
+            { key: "event", label: "Event", maxW: 260 },
+            {
+              key: "connections",
+              label: "Keywords",
+              render: (_, row) => (
+                <button
+                  onClick={() => setSelectedDateId(row.id)}
+                  style={{
+                    border: `1px solid ${C.border}`,
+                    background: C.surface,
+                    color: C.text,
+                    borderRadius: 999,
+                    padding: "6px 10px",
+                    cursor: "pointer",
+                    fontSize: 13,
+                    fontFamily: font,
+                  }}
+                >
+                  {row.connections.keywords.length} linked
+                </button>
+              ),
+            },
+            {
+              key: "trendConnections",
+              label: "Trends",
+              render: (_, row) => (
+                <button
+                  onClick={() => setSelectedDateId(row.id)}
+                  style={{
+                    border: `1px solid ${C.border}`,
+                    background: C.surface,
+                    color: C.text,
+                    borderRadius: 999,
+                    padding: "6px 10px",
+                    cursor: "pointer",
+                    fontSize: 13,
+                    fontFamily: font,
+                  }}
+                >
+                  {row.connections.trends.length} linked
+                </button>
+              ),
+            },
+            { key: "ideas", label: "POD Design Ideas", maxW: 320 },
+            {
+              key: "daysAway",
+              label: "Coming Up",
+              maxW: 150,
+              render: (_, row) => row.daysAwayLabel,
+            },
+          ]}
+          data={filteredRows}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ReportsView({ data }) {
+  const [filter, setFilter] = useState("all");
+  const [granularity, setGranularity] = useState("day");
+  const [matrixColorBy, setMatrixColorBy] = useState("status");
+
+  const series = useMemo(() => buildItemsAddedSeries(data, granularity), [data, granularity]);
+  const visibleSeries = filter === "all" ? series : series.filter((item) => item.key === filter);
+  const dateKeys = useMemo(() => buildPeriodKeys(granularity), [granularity]);
+  const nichePoints = useMemo(() => buildNicheOpportunityPoints(data), [data]);
+  const platformDistribution = useMemo(() => buildPlatformDistribution(data), [data]);
+
+  const chartSeries = visibleSeries.map((item) => ({
+    ...item,
+    points: dateKeys.map((dateKey) => item.counts.get(dateKey) || 0),
+  }));
+
+  const maxValue = Math.max(1, ...chartSeries.flatMap((item) => item.points));
+  const width = 760;
+  const height = 280;
+  const padding = 28;
+  const innerWidth = width - padding * 2;
+  const innerHeight = height - padding * 2;
+  const matrixLegend = matrixColorBy === "status" ? NICHE_STATUS_COLORS : PLATFORM_REPORT_COLORS;
+  const matrixWidth = 760;
+  const matrixHeight = 430;
+  const matrixPadding = 44;
+  const matrixInnerWidth = matrixWidth - matrixPadding * 2;
+  const matrixInnerHeight = matrixHeight - matrixPadding * 2;
+  const platformTotal = platformDistribution.reduce((sum, item) => sum + item.count, 0);
+  const pieRadius = 104;
+  const pieCircumference = 2 * Math.PI * pieRadius;
+  const getMatrixColor = (point) =>
+    matrixColorBy === "status"
+      ? NICHE_STATUS_COLORS[point.status] || C.textMuted
+      : PLATFORM_REPORT_COLORS[point.platform] || PLATFORM_REPORT_COLORS.Other;
+
+  return (
+    <div style={{ display: "grid", gap: 16 }}>
+      <div
+        style={{
+          background: C.card,
+          border: `1px solid ${C.border}`,
+          borderRadius: 10,
+          padding: 18,
+        }}
+      >
+        <div style={{ display: "grid", gap: 6 }}>
+          <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".16em", color: C.muted }}>Listings Reports</div>
+          <h2 style={{ margin: "2px 0 0", fontSize: 24 }}>Report Dashboard</h2>
+          <div style={{ color: C.muted }}>
+            Review all report widgets side by side, with the same dashboard-style card layout.
+          </div>
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gap: 18,
+          gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
+          alignItems: "start",
+        }}
+      >
+        <div style={{ display: "grid", gap: 12 }}>
+          <div
+            style={{
+              background: C.card,
+              border: `1px solid ${C.border}`,
+              borderRadius: 10,
+              padding: 18,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".16em", color: C.muted }}>Items Added</div>
+                <h3 style={{ margin: "8px 0 4px", fontSize: 22 }}>Items Added</h3>
+                <div style={{ color: C.muted }}>
+                  Track how many new records were added by day, week, month, or year.
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <FormControl size="small" sx={{ minWidth: 180 }}>
+                  <MuiSelect value={filter} onChange={(event) => setFilter(event.target.value)} displayEmpty>
+                    <MenuItem value="all">All sources</MenuItem>
+                    <MenuItem value="niches">Niches</MenuItem>
+                    <MenuItem value="inventory">Listings</MenuItem>
+                    <MenuItem value="keywords">Keywords</MenuItem>
+                    <MenuItem value="trends">Trends</MenuItem>
+                  </MuiSelect>
+                </FormControl>
+                <FormControl size="small" sx={{ minWidth: 160 }}>
+                  <MuiSelect value={granularity} onChange={(event) => setGranularity(event.target.value)}>
+                    <MenuItem value="day">Day</MenuItem>
+                    <MenuItem value="week">Week</MenuItem>
+                    <MenuItem value="month">Month</MenuItem>
+                    <MenuItem value="year">Year</MenuItem>
+                  </MuiSelect>
+                </FormControl>
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
+            {visibleSeries.map((item) => (
+              <StatCard
+                key={item.key}
+                label={item.label}
+                value={item.total}
+                sub={`Items added in this ${granularity} view`}
+                color={item.color}
+              />
+            ))}
+          </div>
+
+          <div
+            style={{
+              background: C.card,
+              border: `1px solid ${C.border}`,
+              borderRadius: 10,
+              padding: 18,
+            }}
+          >
+            <div style={{ display: "grid", gap: 14 }}>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                {visibleSeries.map((item) => (
+                  <div key={item.key} style={{ display: "inline-flex", alignItems: "center", gap: 8, color: C.text, fontSize: 13 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 999, background: item.color, display: "inline-block" }} />
+                    {item.label}
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ overflowX: "auto" }}>
+                <svg viewBox={`0 0 ${width} ${height}`} style={{ width: "100%", minWidth: 640, height: "auto", display: "block" }} role="img" aria-label="Items added chart">
+                  {[0, 1, 2, 3].map((step) => {
+                    const y = padding + (innerHeight / 3) * step;
+                    const value = Math.round(maxValue - (maxValue / 3) * step);
+                    return (
+                      <g key={step}>
+                        <line x1={padding} y1={y} x2={width - padding} y2={y} stroke="rgba(148, 163, 184, 0.25)" strokeWidth="1" />
+                        <text x={padding - 8} y={y + 4} textAnchor="end" fontSize="11" fill={C.muted}>{value}</text>
+                      </g>
+                    );
+                  })}
+
+                  {chartSeries.map((item) => {
+                    const points = item.points.map((value, index) => {
+                      const x = padding + (innerWidth * index) / Math.max(dateKeys.length - 1, 1);
+                      const y = padding + innerHeight - (value / maxValue) * innerHeight;
+                      return { x, y, value };
+                    });
+                    return (
+                      <g key={item.key}>
+                        <polyline
+                          fill="none"
+                          stroke={item.color}
+                          strokeWidth="3"
+                          strokeLinejoin="round"
+                          strokeLinecap="round"
+                          points={points.map((point) => `${point.x},${point.y}`).join(" ")}
+                        />
+                        {points.map((point, index) => (
+                          <circle key={`${item.key}-${dateKeys[index]}`} cx={point.x} cy={point.y} r="3.5" fill={item.color}>
+                            <title>{`${item.label}: ${point.value} on ${dateKeys[index]}`}</title>
+                          </circle>
+                        ))}
+                      </g>
+                    );
+                  })}
+
+                  {dateKeys.map((dateKey, index) => {
+                    if (index !== 0 && index !== dateKeys.length - 1 && index !== Math.floor(dateKeys.length / 2)) {
+                      return null;
+                    }
+                    const x = padding + (innerWidth * index) / Math.max(dateKeys.length - 1, 1);
+                    return (
+                      <text key={dateKey} x={x} y={height - 6} textAnchor="middle" fontSize="11" fill={C.muted}>
+                        {formatPeriodLabel(dateKey, granularity)}
+                      </text>
+                    );
+                  })}
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gap: 12 }}>
+          <div
+            style={{
+              background: C.card,
+              border: `1px solid ${C.border}`,
+              borderRadius: 10,
+              padding: 18,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".16em", color: C.muted }}>Niche Matrix</div>
+                <h3 style={{ margin: "8px 0 4px", fontSize: 22 }}>Niche Opportunity Matrix</h3>
+                <div style={{ color: C.muted }}>
+                  Compare demand versus competition to spot validated and emerging niche opportunities fast.
+                </div>
+              </div>
+              <FormControl size="small" sx={{ minWidth: 180 }}>
+                <MuiSelect value={matrixColorBy} onChange={(event) => setMatrixColorBy(event.target.value)}>
+                  <MenuItem value="status">Color by Status</MenuItem>
+                  <MenuItem value="platform">Color by Platform</MenuItem>
+                </MuiSelect>
+              </FormControl>
+            </div>
+          </div>
+          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
+            <StatCard
+              label="Goldmine"
+              value={nichePoints.filter((point) => point.demand >= 7 && point.competition <= 4).length}
+              sub="High demand, low competition"
+              color="#22c55e"
+            />
+            <StatCard
+              label="Crowded"
+              value={nichePoints.filter((point) => point.demand >= 7 && point.competition >= 7).length}
+              sub="High demand, high competition"
+              color="#ef4444"
+            />
+            <StatCard
+              label="Experimental"
+              value={nichePoints.filter((point) => point.demand <= 4 && point.competition <= 4).length}
+              sub="Low demand, low competition"
+              color="#f59e0b"
+            />
+            <StatCard
+              label="Tracked Niches"
+              value={nichePoints.length}
+              sub="Plotted in the matrix"
+              color="#3b82f6"
+            />
+          </div>
+
+          <div
+            style={{
+              background: C.card,
+              border: `1px solid ${C.border}`,
+              borderRadius: 10,
+              padding: 18,
+            }}
+          >
+            <div style={{ display: "grid", gap: 14 }}>
+              <div style={{ display: "grid", gap: 6 }}>
+                <div style={{ fontSize: 14, color: C.text, fontWeight: 700 }}>Core research visualization</div>
+                <div style={{ color: C.textDim, fontSize: 14 }}>
+                  High demand + low competition = goldmine niches. High demand + high competition = crowded. Low demand + low competition = experimental.
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                {Object.entries(matrixLegend).map(([label, color]) => (
+                  <div key={label} style={{ display: "inline-flex", alignItems: "center", gap: 8, color: C.text, fontSize: 13 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 999, background: color, display: "inline-block" }} />
+                    {label}
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ overflowX: "auto" }}>
+                <svg
+                  viewBox={`0 0 ${matrixWidth} ${matrixHeight}`}
+                  style={{ width: "100%", minWidth: 680, height: "auto", display: "block" }}
+                  role="img"
+                  aria-label="Niche opportunity matrix"
+                >
+                  {[0, 1, 2, 3, 4].map((step) => {
+                    const x = matrixPadding + (matrixInnerWidth / 4) * step;
+                    const y = matrixPadding + (matrixInnerHeight / 4) * step;
+                    return (
+                      <g key={step}>
+                        <line x1={x} y1={matrixPadding} x2={x} y2={matrixHeight - matrixPadding} stroke="rgba(148, 163, 184, 0.18)" strokeWidth="1" />
+                        <line x1={matrixPadding} y1={y} x2={matrixWidth - matrixPadding} y2={y} stroke="rgba(148, 163, 184, 0.18)" strokeWidth="1" />
+                      </g>
+                    );
+                  })}
+
+                  <rect
+                    x={matrixPadding}
+                    y={matrixPadding}
+                    width={matrixInnerWidth / 2}
+                    height={matrixInnerHeight / 2}
+                    fill="rgba(34, 197, 94, 0.08)"
+                    stroke="rgba(34, 197, 94, 0.18)"
+                  />
+                  <rect
+                    x={matrixPadding + matrixInnerWidth / 2}
+                    y={matrixPadding}
+                    width={matrixInnerWidth / 2}
+                    height={matrixInnerHeight / 2}
+                    fill="rgba(239, 68, 68, 0.08)"
+                    stroke="rgba(239, 68, 68, 0.18)"
+                  />
+                  <rect
+                    x={matrixPadding}
+                    y={matrixPadding + matrixInnerHeight / 2}
+                    width={matrixInnerWidth / 2}
+                    height={matrixInnerHeight / 2}
+                    fill="rgba(245, 158, 11, 0.08)"
+                    stroke="rgba(245, 158, 11, 0.18)"
+                  />
+
+                  {nichePoints.map((point) => {
+                    const x = matrixPadding + ((Math.max(1, Math.min(10, point.competition)) - 1) / 9) * matrixInnerWidth;
+                    const y = matrixPadding + matrixInnerHeight - ((Math.max(1, Math.min(10, point.demand)) - 1) / 9) * matrixInnerHeight;
+                    return (
+                      <g key={point.id}>
+                        <circle cx={x} cy={y} r="7" fill={getMatrixColor(point)} opacity="0.92">
+                          <title>{`${point.name} | Demand ${point.demand} | Competition ${point.competition} | ${point.status} | ${point.platform}`}</title>
+                        </circle>
+                        <text x={x + 10} y={y - 10} fontSize="11" fill={C.textDim}>
+                          {point.name}
+                        </text>
+                      </g>
+                    );
+                  })}
+
+                  {[1, 3, 5, 7, 10].map((value) => {
+                    const x = matrixPadding + ((value - 1) / 9) * matrixInnerWidth;
+                    const y = matrixPadding + matrixInnerHeight - ((value - 1) / 9) * matrixInnerHeight;
+                    return (
+                      <g key={value}>
+                        <text x={x} y={matrixHeight - 10} textAnchor="middle" fontSize="11" fill={C.muted}>{value}</text>
+                        <text x={20} y={y + 4} textAnchor="middle" fontSize="11" fill={C.muted}>{value}</text>
+                      </g>
+                    );
+                  })}
+
+                  <text x={matrixWidth / 2} y={matrixHeight - 2} textAnchor="middle" fontSize="13" fill={C.text}>
+                    Competition
+                  </text>
+                  <text
+                    x={16}
+                    y={matrixHeight / 2}
+                    textAnchor="middle"
+                    fontSize="13"
+                    fill={C.text}
+                    transform={`rotate(-90 16 ${matrixHeight / 2})`}
+                  >
+                    Demand
+                  </text>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gap: 12 }}>
+          <div
+            style={{
+              background: C.card,
+              border: `1px solid ${C.border}`,
+              borderRadius: 10,
+              padding: 18,
+            }}
+          >
+            <div style={{ display: "grid", gap: 6 }}>
+              <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".16em", color: C.muted }}>Platform Distribution</div>
+              <h3 style={{ margin: "8px 0 4px", fontSize: 22 }}>Platform Distribution</h3>
+              <div style={{ color: C.muted }}>
+                See where the current listings portfolio is concentrated across your core selling platforms.
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
+            <StatCard
+              label="Total Listings"
+              value={platformTotal}
+              sub="Across tracked core platforms"
+              color="#3b82f6"
+            />
+            {platformDistribution.map((item) => (
+              <StatCard
+                key={item.platform}
+                label={item.label}
+                value={item.count}
+                sub={`${item.share.toFixed(0)}% of portfolio`}
+                color={item.color}
+              />
+            ))}
+          </div>
+
+          <div
+            style={{
+              background: C.card,
+              border: `1px solid ${C.border}`,
+              borderRadius: 10,
+              padding: 18,
+            }}
+          >
+            <div style={{ display: "grid", gap: 18, gridTemplateColumns: "minmax(260px, 340px) minmax(280px, 1fr)", alignItems: "center" }}>
+              <div style={{ display: "grid", justifyItems: "center", gap: 12 }}>
+                <svg viewBox="0 0 280 280" style={{ width: "100%", maxWidth: 280, height: "auto", display: "block" }} role="img" aria-label="Platform distribution pie chart">
+                  <circle cx="140" cy="140" r={pieRadius} fill="none" stroke="rgba(148, 163, 184, 0.18)" strokeWidth="36" />
+                  {platformDistribution.reduce((acc, item) => {
+                    const dashLength = platformTotal ? (item.count / platformTotal) * pieCircumference : 0;
+                    const segment = (
+                      <circle
+                        key={item.platform}
+                        cx="140"
+                        cy="140"
+                        r={pieRadius}
+                        fill="none"
+                        stroke={item.color}
+                        strokeWidth="36"
+                        strokeDasharray={`${dashLength} ${pieCircumference - dashLength}`}
+                        strokeDashoffset={-acc.offset}
+                        transform="rotate(-90 140 140)"
+                      >
+                        <title>{`${item.label}: ${item.count} listings (${item.share.toFixed(1)}%)`}</title>
+                      </circle>
+                    );
+                    acc.offset += dashLength;
+                    acc.nodes.push(segment);
+                    return acc;
+                  }, { offset: 0, nodes: [] }).nodes}
+                  <circle cx="140" cy="140" r="72" fill={C.card} />
+                  <text x="140" y="132" textAnchor="middle" fontSize="14" fill={C.textDim}>Portfolio</text>
+                  <text x="140" y="154" textAnchor="middle" fontSize="28" fontWeight="700" fill={C.text}>{platformTotal}</text>
+                </svg>
+                <div style={{ color: C.textDim, fontSize: 14, textAlign: "center", maxWidth: 260 }}>
+                  This view shows where the user&apos;s portfolio is concentrated today.
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gap: 12 }}>
+                {platformDistribution.map((item) => (
+                  <div
+                    key={item.platform}
+                    style={{
+                      display: "grid",
+                      gap: 8,
+                      padding: "12px 14px",
+                      border: `1px solid ${C.border}`,
+                      borderRadius: 10,
+                      background: C.surface,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 10, color: C.text }}>
+                        <span style={{ width: 12, height: 12, borderRadius: 999, background: item.color, display: "inline-block" }} />
+                        <span>{item.label}</span>
+                      </div>
+                      <div style={{ color: C.textDim, fontSize: 14 }}>{item.count} listings</div>
+                    </div>
+                    <div style={{ height: 10, borderRadius: 999, overflow: "hidden", background: "rgba(148, 163, 184, 0.12)" }}>
+                      <div style={{ width: `${item.share}%`, height: "100%", background: item.color, borderRadius: 999 }} />
+                    </div>
+                    <div style={{ color: C.textMuted, fontSize: 13 }}>{item.share.toFixed(1)}% of active portfolio concentration</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 function InventoryView({ data, addItem, deleteItem, updateItem, importItems, plan }) {
   const [form, setForm] = useState({
     sku: "",
@@ -3191,7 +5772,7 @@ function InventoryView({ data, addItem, deleteItem, updateItem, importItems, pla
 
   return (
     <div>
-      <h1 style={{ fontSize: 27, fontWeight: 700, margin: "0 0 4px" }}>Inventory Tracker</h1>
+      <h1 style={{ fontSize: 27, fontWeight: 700, margin: "0 0 4px" }}>Listings Tracker</h1>
       <p style={{ color: C.textDim, fontSize: 19, margin: "0 0 24px", fontFamily: font }}>
         Track live listings across all platforms
       </p>
@@ -3251,10 +5832,11 @@ function InventoryView({ data, addItem, deleteItem, updateItem, importItems, pla
             label: "Image",
             render: (v, row) => <ListingImagePreview src={v} alt={row.design || row.sku || "Listing image"} />,
           },
-          { key: "platform", label: "Platform" },
+          { key: "platform", label: "Platform", filterable: true },
           {
             key: "status",
             label: "Status",
+            filterable: true,
             render: (v) => <Badge color={v === "Active" ? "success" : v === "Flagged" ? "danger" : "warn"}>{v}</Badge>,
           },
           { key: "sales", label: "Sales" },
@@ -3791,6 +6373,1825 @@ function ResearchView({ data, loading, setLoading, plan, usage, setUsage }) {
   );
 }
 
+// ─── IDEAS VIEW ────────────────────────────────
+function IdeasView({ data, addItem, updateItem, deleteItem, update, openNicheHome }) {
+  const ideas = useMemo(() => (Array.isArray(data.ideas) ? data.ideas : []), [data.ideas]);
+  const [quickTitle, setQuickTitle] = useState("");
+  const [activeIdeaId, setActiveIdeaId] = useState(null);
+  const [editorDraft, setEditorDraft] = useState(null);
+  const [draggingIdeaId, setDraggingIdeaId] = useState(null);
+  const [celebration, setCelebration] = useState(null);
+  const editorRef = useRef(null);
+
+  const customNicheOptions = useMemo(
+    () =>
+      Array.from(
+        new Set((data.customNiches || []).map((item) => normalizeNicheOptionLabel(item)).filter(Boolean))
+      ).sort(),
+    [data.customNiches]
+  );
+  const nicheOptions = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...DEFAULT_NICHE_OPTIONS,
+          ...(data.niches || []).map((item) => normalizeNicheOptionLabel(item?.niche)).filter(Boolean),
+          ...customNicheOptions,
+        ])
+      ).sort(),
+    [customNicheOptions, data.niches]
+  );
+  const trendOptions = useMemo(
+    () => Array.from(new Set((data.trends || []).map((item) => item?.trend).filter(Boolean))).sort(),
+    [data.trends]
+  );
+  const keywordOptions = useMemo(
+    () => Array.from(new Set((data.keywords || []).map((item) => item?.keyword).filter(Boolean))).sort(),
+    [data.keywords]
+  );
+  const briefOptions = useMemo(
+    () => (data.briefs || []).map((item) => ({
+      id: item.id,
+      label: `${item.id} · ${item.slogan || item.concept || item.niche || "Untitled brief"}`,
+    })),
+    [data.briefs]
+  );
+  const linkedListingsByIdeaId = useMemo(
+    () =>
+      Object.fromEntries(
+        (data.inventory || [])
+          .filter((item) => item?.ideaId)
+          .map((item) => [item.ideaId, item])
+      ),
+    [data.inventory]
+  );
+
+  const buildListingDraft = useCallback((idea, source = {}) => {
+    const briefIds = Array.isArray(idea?.briefIds) ? idea.briefIds.filter(Boolean) : [];
+    return {
+      sku: source?.sku || "",
+      design: source?.design || idea?.title || "",
+      briefId: source?.briefId || briefIds[0] || "",
+      platform: source?.platform || idea?.platform || "Amazon Merch",
+      url: source?.url || "",
+      imageUrl: source?.imageUrl || "",
+      status: source?.status || "Active",
+      notes: source?.notes || "",
+      dateListed: source?.dateListed || localDateKey(),
+      sales: source?.sales ?? "",
+    };
+  }, []);
+
+  const ideasByColumn = useMemo(
+    () =>
+      Object.fromEntries(
+        IDEA_COLUMNS.map((column) => [
+          column.id,
+          ideas
+            .filter((idea) => (idea?.status || "backlog") === column.id)
+            .sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()),
+        ])
+      ),
+    [ideas]
+  );
+
+  const activeIdea = useMemo(
+    () => ideas.find((idea) => idea.id === activeIdeaId) || null,
+    [ideas, activeIdeaId]
+  );
+
+  useEffect(() => {
+    if (!activeIdea) return;
+    const linkedListing = linkedListingsByIdeaId[activeIdea.id];
+    const listingSeed = { ...(activeIdea.listing || {}), ...(linkedListing || {}) };
+
+    setEditorDraft({
+      ...activeIdea,
+      keywordsText: Array.isArray(activeIdea.keywords) ? activeIdea.keywords.join(", ") : "",
+      briefIds: Array.isArray(activeIdea.briefIds) ? activeIdea.briefIds : [],
+      listing: buildListingDraft(activeIdea, listingSeed),
+    });
+  }, [activeIdea, buildListingDraft, linkedListingsByIdeaId]);
+
+  useEffect(() => {
+    if (!activeIdea || !editorRef.current) return;
+    const nextHtml = activeIdea.notesHtml || "<p></p>";
+    if (editorRef.current.innerHTML !== nextHtml) {
+      editorRef.current.innerHTML = nextHtml;
+    }
+  }, [activeIdea]);
+
+  useEffect(() => {
+    if (!celebration) return undefined;
+    const timeoutId = window.setTimeout(() => setCelebration(null), 2600);
+    return () => window.clearTimeout(timeoutId);
+  }, [celebration]);
+
+  const persistIdea = useCallback(
+    async (idea) => {
+      const index = ideas.findIndex((item) => item.id === idea.id);
+      if (index === -1) {
+        await addItem("ideas", idea);
+        return;
+      }
+      await updateItem("ideas", index, idea);
+    },
+    [addItem, ideas, updateItem]
+  );
+
+  const saveCustomNiches = useCallback(
+    async (nextOptions) => {
+      const deduped = Array.from(
+        new Set(
+          nextOptions
+            .map((item) => normalizeNicheOptionLabel(item))
+            .filter(
+              (item) =>
+                item &&
+                !DEFAULT_NICHE_OPTIONS.some(
+                  (preset) => normalizeCompareValue(preset) === normalizeCompareValue(item)
+                )
+            )
+        )
+      ).sort();
+      await update("customNiches", deduped);
+      return deduped;
+    },
+    [update]
+  );
+
+  const handleAddCustomNiche = useCallback(
+    async (nextValue) => {
+      const normalized = normalizeNicheOptionLabel(nextValue);
+      if (!normalized) return;
+      if (nicheOptions.some((option) => normalizeCompareValue(option) === normalizeCompareValue(normalized))) {
+        return;
+      }
+      await saveCustomNiches([...customNicheOptions, normalized]);
+    },
+    [customNicheOptions, nicheOptions, saveCustomNiches]
+  );
+
+  const handleRenameCustomNiche = useCallback(
+    async (currentValue) => {
+      const renamed = window.prompt("Rename custom niche", currentValue);
+      const normalized = normalizeNicheOptionLabel(renamed);
+
+      if (!normalized || normalizeCompareValue(normalized) === normalizeCompareValue(currentValue)) {
+        return;
+      }
+
+      if (nicheOptions.some((option) => normalizeCompareValue(option) === normalizeCompareValue(normalized))) {
+        alert("That niche already exists in the list.");
+        return;
+      }
+
+      await saveCustomNiches(
+        customNicheOptions.map((option) =>
+          normalizeCompareValue(option) === normalizeCompareValue(currentValue) ? normalized : option
+        )
+      );
+
+      setEditorDraft((prev) => (
+        prev && normalizeCompareValue(prev.niche) === normalizeCompareValue(currentValue)
+          ? { ...prev, niche: normalized }
+          : prev
+      ));
+    },
+    [customNicheOptions, nicheOptions, saveCustomNiches]
+  );
+
+  const handleDeleteCustomNiche = useCallback(
+    async (targetValue) => {
+      await saveCustomNiches(
+        customNicheOptions.filter((option) => normalizeCompareValue(option) !== normalizeCompareValue(targetValue))
+      );
+    },
+    [customNicheOptions, saveCustomNiches]
+  );
+
+  const createIdea = async () => {
+    const title = quickTitle.trim();
+    if (!title) return;
+
+    const now = new Date().toISOString();
+    const nextIdea = {
+      id: generateIdeaId(),
+      title,
+      niche: "",
+      trend: "",
+      keywords: [],
+      briefIds: [],
+      platform: "Amazon Merch",
+      status: "backlog",
+      notesHtml: "<p></p>",
+      updatedAt: now,
+      createdAt: now,
+    };
+
+    await addItem("ideas", nextIdea);
+    setQuickTitle("");
+    setActiveIdeaId(nextIdea.id);
+  };
+
+  const createIdeaFromOstNode = useCallback(
+    async (node) => {
+      const title = (node?.title || OST_NODE_LABELS[node?.type] || "New Idea").trim();
+      const now = new Date().toISOString();
+      const nextIdea = {
+        id: generateIdeaId(),
+        title,
+        niche: "",
+        trend: "",
+        keywords: [],
+        briefIds: [],
+        platform: "Amazon Merch",
+        status: "backlog",
+        notesHtml: ostNotesToHtml(node?.notes || ""),
+        updatedAt: now,
+        createdAt: now,
+      };
+
+      await addItem("ideas", nextIdea);
+      setActiveIdeaId(nextIdea.id);
+      setCelebration({
+        title,
+        message: "Added to the Backlog column from your Opportunity Solution Tree.",
+      });
+    },
+    [addItem]
+  );
+
+  const moveIdea = useCallback(
+    async (ideaId, nextStatus) => {
+      const idea = ideas.find((item) => item.id === ideaId);
+      if (!idea || idea.status === nextStatus) return;
+
+      const updatedIdea = {
+        ...idea,
+        status: nextStatus,
+        updatedAt: new Date().toISOString(),
+      };
+
+      await persistIdea(updatedIdea);
+
+      if (nextStatus === "posted") {
+        setCelebration({
+          title: idea.title,
+          message: "Nice work. You moved an idea all the way to Posted.",
+        });
+      }
+    },
+    [ideas, persistIdea]
+  );
+
+  const saveEditor = async () => {
+    if (!editorDraft) return;
+
+    const html = editorRef.current?.innerHTML || editorDraft.notesHtml || "<p></p>";
+    const normalizedListing = buildListingDraft(editorDraft, editorDraft.listing || {});
+    const nextIdea = {
+      ...editorDraft,
+      title: editorDraft.title?.trim() || "Untitled Idea",
+      niche: editorDraft.niche?.trim() || "",
+      trend: editorDraft.trend?.trim() || "",
+      platform: editorDraft.platform?.trim() || "Amazon Merch",
+      keywords: (editorDraft.keywordsText || "")
+        .split(",")
+        .map((keyword) => keyword.trim())
+        .filter(Boolean),
+      briefIds: Array.isArray(editorDraft.briefIds) ? editorDraft.briefIds.filter(Boolean) : [],
+      listing: activeIdea?.listing || linkedListingsByIdeaId[editorDraft.id] || null,
+      notesHtml: html,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const linkedListingIndex = (data.inventory || []).findIndex((item) => item?.ideaId === nextIdea.id);
+    const hasLinkedListing = linkedListingIndex >= 0;
+    const hasMeaningfulListingData =
+      !!normalizedListing.sku.trim() ||
+      !!normalizedListing.url.trim() ||
+      !!normalizedListing.imageUrl.trim() ||
+      !!normalizedListing.notes.trim() ||
+      !!String(normalizedListing.sales ?? "").trim() ||
+      (normalizedListing.design || "").trim() !== (nextIdea.title || "").trim();
+
+    if (nextIdea.status === "posted" && (hasLinkedListing || hasMeaningfulListingData)) {
+      const nextInventoryItem = {
+        ...normalizedListing,
+        ideaId: nextIdea.id,
+        design: normalizedListing.design?.trim() || nextIdea.title || "Untitled Idea",
+        briefId: normalizedListing.briefId?.trim() || nextIdea.briefIds?.[0] || "",
+        platform: normalizedListing.platform?.trim() || nextIdea.platform || "Amazon Merch",
+        url: normalizedListing.url?.trim() || "",
+        imageUrl: normalizedListing.imageUrl?.trim() || "",
+        status: normalizedListing.status || "Active",
+        notes: normalizedListing.notes?.trim() || "",
+        dateListed: normalizedListing.dateListed || localDateKey(),
+        sales: normalizedListing.sales === "" ? "" : Number(normalizedListing.sales) || 0,
+      };
+      nextIdea.listing = { ...nextInventoryItem };
+      delete nextIdea.listing.ideaId;
+
+      if (hasLinkedListing) {
+        await updateItem("inventory", linkedListingIndex, {
+          ...data.inventory[linkedListingIndex],
+          ...nextInventoryItem,
+        });
+      } else {
+        await addItem("inventory", nextInventoryItem);
+      }
+    }
+
+    await persistIdea(nextIdea);
+    setActiveIdeaId(nextIdea.id);
+  };
+
+  const removeIdea = async () => {
+    if (!activeIdea) return;
+    const index = ideas.findIndex((item) => item.id === activeIdea.id);
+    if (index === -1) return;
+    await deleteItem("ideas", index);
+    setActiveIdeaId(null);
+    setEditorDraft(null);
+  };
+
+  const applyFormat = (command) => {
+    if (!editorRef.current) return;
+    editorRef.current.focus();
+    document.execCommand(command, false);
+  };
+
+  const infoButtonStyle = {
+    width: 22,
+    height: 22,
+    borderRadius: "50%",
+    border: `1px solid ${C.borderLight}`,
+    background: "rgba(255,255,255,0.04)",
+    color: C.textMuted,
+    fontFamily: sansFont,
+    fontSize: 13,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "help",
+  };
+
+  return (
+    <div>
+      {celebration && (
+        <div
+          style={{
+            position: "fixed",
+            top: 24,
+            right: 24,
+            zIndex: 40,
+            background: "linear-gradient(135deg, rgba(16,185,129,0.18), rgba(59,130,246,0.14))",
+            border: `1px solid ${C.success}`,
+            borderRadius: 12,
+            padding: "14px 18px",
+            boxShadow: "0 18px 48px rgba(0,0,0,0.34)",
+            maxWidth: 340,
+          }}
+        >
+          <div style={{ fontFamily: font, fontSize: 13, color: C.success, textTransform: "uppercase", letterSpacing: 1 }}>
+            +1 Completed
+          </div>
+          <div style={{ fontFamily: sansFont, fontSize: 18, color: C.white, fontWeight: 700, marginTop: 4 }}>
+            {celebration.title}
+          </div>
+          <div style={{ fontSize: 14, color: C.text, marginTop: 4 }}>{celebration.message}</div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontSize: 27, fontWeight: 700, margin: "0 0 4px" }}>Ideas Board</h1>
+          <p style={{ color: C.textDim, fontSize: 19, margin: 0, fontFamily: font }}>
+            Capture concepts quickly, then pull them across the design workflow as they mature.
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <Input
+            value={quickTitle}
+            onChange={setQuickTitle}
+            placeholder="Add a new idea to Backlog"
+            style={{ minWidth: 260 }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                createIdea();
+              }
+            }}
+          />
+          <Btn onClick={createIdea} disabled={!quickTitle.trim()}>
+            + New Idea
+          </Btn>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, alignItems: "start" }}>
+        {IDEA_COLUMNS.map((column) => {
+          const columnIdeas = ideasByColumn[column.id] || [];
+
+          return (
+            <div
+              key={column.id}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={async (event) => {
+                event.preventDefault();
+                const ideaId = event.dataTransfer.getData("text/plain") || draggingIdeaId;
+                setDraggingIdeaId(null);
+                if (ideaId) {
+                  await moveIdea(ideaId, column.id);
+                }
+              }}
+              style={{
+                background: C.card,
+                border: `1px solid ${C.border}`,
+                borderRadius: 12,
+                minHeight: 420,
+                overflow: "hidden",
+              }}
+            >
+              <div style={{ height: 5, background: column.stripe }} />
+              <div style={{ padding: 14, borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <div>
+                  <div style={{ fontFamily: font, fontSize: 14, textTransform: "uppercase", letterSpacing: 0.8, color: C.white }}>
+                    {column.label}
+                  </div>
+                  <div style={{ fontSize: 13, color: C.textMuted, marginTop: 4 }}>{columnIdeas.length} card{columnIdeas.length === 1 ? "" : "s"}</div>
+                </div>
+                <Tooltip title={column.help}>
+                  <button type="button" aria-label={`How to use ${column.label}`} style={infoButtonStyle}>
+                    i
+                  </button>
+                </Tooltip>
+              </div>
+
+              <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 10, minHeight: 360 }}>
+                {columnIdeas.length === 0 ? (
+                  <div
+                    style={{
+                      border: `1px dashed ${C.borderLight}`,
+                      borderRadius: 10,
+                      padding: 18,
+                      color: C.textMuted,
+                      fontSize: 14,
+                      lineHeight: 1.5,
+                      textAlign: "center",
+                    }}
+                  >
+                    Drop a card here when it reaches this stage.
+                  </div>
+                ) : (
+                  columnIdeas.map((idea) => (
+                    <button
+                      key={idea.id}
+                      type="button"
+                      draggable
+                      onDragStart={(event) => {
+                        event.dataTransfer.setData("text/plain", idea.id);
+                        setDraggingIdeaId(idea.id);
+                      }}
+                      onDragEnd={() => setDraggingIdeaId(null)}
+                      onClick={() => setActiveIdeaId(idea.id)}
+                      style={{
+                        textAlign: "left",
+                        border: idea.id === activeIdeaId ? `1px solid ${column.stripe}` : `1px solid ${C.border}`,
+                        background: idea.id === activeIdeaId ? "rgba(255,255,255,0.03)" : C.surface,
+                        borderRadius: 10,
+                        padding: 10,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+                        <div style={{ fontFamily: sansFont, fontSize: 15, fontWeight: 700, color: C.white, lineHeight: 1.3 }}>
+                          {idea.title || "Untitled Idea"}
+                        </div>
+                        <span style={{ color: C.textMuted, fontSize: 12 }}>⋮⋮</span>
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                        {idea.niche && (
+                          <NicheLink niche={idea.niche} onOpen={openNicheHome} style={{ textDecoration: "none" }}>
+                            <Badge>{idea.niche}</Badge>
+                          </NicheLink>
+                        )}
+                        {idea.trend && <Badge color="warn">{idea.trend}</Badge>}
+                      </div>
+                      {!!idea.keywords?.length && (
+                        <div style={{ marginTop: 8, color: C.textDim, fontSize: 13, lineHeight: 1.4 }}>
+                          {idea.keywords.slice(0, 3).join(", ")}
+                          {idea.keywords.length > 3 ? ` +${idea.keywords.length - 3}` : ""}
+                        </div>
+                      )}
+                  {!!idea.briefIds?.length && (
+                        <div style={{ marginTop: 8, color: C.textMuted, fontSize: 12, lineHeight: 1.4 }}>
+                          Briefs: {idea.briefIds.slice(0, 2).join(", ")}
+                          {idea.briefIds.length > 2 ? ` +${idea.briefIds.length - 2}` : ""}
+                        </div>
+                      )}
+                      {idea.status === "posted" && (linkedListingsByIdeaId[idea.id] || idea.listing) && (
+                        <div style={{ marginTop: 8, color: C.success, fontSize: 12, lineHeight: 1.4 }}>
+                          Listing: {(linkedListingsByIdeaId[idea.id] || idea.listing)?.platform || "Amazon Merch"} ·{" "}
+                          {(linkedListingsByIdeaId[idea.id] || idea.listing)?.status || "Draft"}
+                        </div>
+                      )}
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <OpportunityTreeWorkspace
+        trees={data.opportunityTrees || []}
+        onSave={(nextTrees) => update("opportunityTrees", nextTrees)}
+        onAddNodeToBacklog={createIdeaFromOstNode}
+      />
+
+      {activeIdea && editorDraft && (
+        <>
+          <div
+            onClick={() => setActiveIdeaId(null)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.46)",
+              zIndex: 30,
+            }}
+          />
+          <aside
+            style={{
+              position: "fixed",
+              top: 0,
+              right: 0,
+              width: "min(560px, 100vw)",
+              height: "100vh",
+              background: C.surface,
+              borderLeft: `1px solid ${C.border}`,
+              zIndex: 31,
+              padding: 24,
+              overflowY: "auto",
+              boxShadow: "-16px 0 48px rgba(0,0,0,0.32)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 18 }}>
+              <div>
+                <div style={{ fontFamily: font, fontSize: 13, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>
+                  Idea Details
+                </div>
+                <div style={{ fontSize: 24, color: C.white, fontWeight: 700, fontFamily: sansFont }}>
+                  {activeIdea.title || "Untitled Idea"}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveIdeaId(null)}
+                style={{
+                  border: `1px solid ${C.border}`,
+                  background: C.card,
+                  color: C.textDim,
+                  borderRadius: 8,
+                  width: 34,
+                  height: 34,
+                  cursor: "pointer",
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gap: 14 }}>
+              <div>
+                <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Title</label>
+                <Input
+                  value={editorDraft.title || ""}
+                  onChange={(value) => setEditorDraft((prev) => ({ ...prev, title: value }))}
+                />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+                <div>
+                  <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Niche</label>
+                  <StandaloneNicheSelect
+                    value={editorDraft.niche || ""}
+                    onChange={(value) => setEditorDraft((prev) => ({ ...prev, niche: value }))}
+                    presetOptions={DEFAULT_NICHE_OPTIONS}
+                    customOptions={customNicheOptions}
+                    onAddCustom={handleAddCustomNiche}
+                    onRenameCustom={handleRenameCustomNiche}
+                    onDeleteCustom={handleDeleteCustomNiche}
+                    colors={C}
+                    fontFamily={font}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Trend</label>
+                  <Input
+                    value={editorDraft.trend || ""}
+                    onChange={(value) => setEditorDraft((prev) => ({ ...prev, trend: value }))}
+                    placeholder="Pick or type a trend"
+                    list="idea-trend-options"
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+                <div>
+                  <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Keywords</label>
+                  <Input
+                    value={editorDraft.keywordsText || ""}
+                    onChange={(value) => setEditorDraft((prev) => ({ ...prev, keywordsText: value }))}
+                    placeholder="Comma-separated keywords"
+                    list="idea-keyword-options"
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Status</label>
+                  <select
+                    value={editorDraft.status || "backlog"}
+                    onChange={(event) => setEditorDraft((prev) => ({ ...prev, status: event.target.value }))}
+                    style={{
+                      width: "100%",
+                      background: C.card,
+                      border: `1px solid ${C.border}`,
+                      borderRadius: 8,
+                      color: C.text,
+                      fontFamily: font,
+                      padding: "11px 12px",
+                    }}
+                  >
+                    {IDEA_COLUMNS.map((column) => (
+                      <option key={column.id} value={column.id}>
+                        {column.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Design Briefs</label>
+                <select
+                  multiple
+                  value={editorDraft.briefIds || []}
+                  onChange={(event) => {
+                    const values = Array.from(event.target.selectedOptions).map((option) => option.value);
+                    setEditorDraft((prev) => ({ ...prev, briefIds: values }));
+                  }}
+                  style={{
+                    width: "100%",
+                    minHeight: 132,
+                    background: C.card,
+                    border: `1px solid ${C.border}`,
+                    borderRadius: 8,
+                    color: C.text,
+                    fontFamily: font,
+                    padding: "10px 12px",
+                  }}
+                >
+                  {briefOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <div style={{ color: C.textMuted, fontSize: 12, marginTop: 6 }}>
+                  Hold `Ctrl` or `Cmd` to select multiple briefs.
+                </div>
+              </div>
+
+              {editorDraft.status === "posted" && (
+                <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 12 }}>
+                    <div>
+                      <div style={{ fontFamily: font, fontSize: 13, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>
+                        Listing Details
+                      </div>
+                      <div style={{ fontSize: 14, color: C.textDim, marginTop: 4 }}>
+                        Save this idea to sync the listing into the Listings table.
+                      </div>
+                    </div>
+                    <Badge color="success">Posted</Badge>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+                    <div>
+                      <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>SKU</label>
+                      <Input
+                        value={editorDraft.listing?.sku || ""}
+                        onChange={(value) =>
+                          setEditorDraft((prev) => ({ ...prev, listing: { ...(prev.listing || {}), sku: value } }))
+                        }
+                        placeholder="POD-001"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Design</label>
+                      <Input
+                        value={editorDraft.listing?.design || ""}
+                        onChange={(value) =>
+                          setEditorDraft((prev) => ({ ...prev, listing: { ...(prev.listing || {}), design: value } }))
+                        }
+                        placeholder="Design name"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Brief ID</label>
+                      <Input
+                        value={editorDraft.listing?.briefId || ""}
+                        onChange={(value) =>
+                          setEditorDraft((prev) => ({ ...prev, listing: { ...(prev.listing || {}), briefId: value } }))
+                        }
+                        placeholder="DB-001"
+                        list="idea-brief-options"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Platform</label>
+                      <Select
+                        value={editorDraft.listing?.platform || "Amazon Merch"}
+                        onChange={(value) =>
+                          setEditorDraft((prev) => ({ ...prev, listing: { ...(prev.listing || {}), platform: value } }))
+                        }
+                        options={PLATFORMS}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Status</label>
+                      <Select
+                        value={editorDraft.listing?.status || "Active"}
+                        onChange={(value) =>
+                          setEditorDraft((prev) => ({ ...prev, listing: { ...(prev.listing || {}), status: value } }))
+                        }
+                        options={LISTING_STATUS}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Date Listed</label>
+                      <Input
+                        type="date"
+                        value={editorDraft.listing?.dateListed || ""}
+                        onChange={(value) =>
+                          setEditorDraft((prev) => ({ ...prev, listing: { ...(prev.listing || {}), dateListed: value } }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Listing URL</label>
+                      <Input
+                        value={editorDraft.listing?.url || ""}
+                        onChange={(value) =>
+                          setEditorDraft((prev) => ({ ...prev, listing: { ...(prev.listing || {}), url: value } }))
+                        }
+                        placeholder="https://example.com/listing"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Image URL</label>
+                      <Input
+                        value={editorDraft.listing?.imageUrl || ""}
+                        onChange={(value) =>
+                          setEditorDraft((prev) => ({ ...prev, listing: { ...(prev.listing || {}), imageUrl: value } }))
+                        }
+                        placeholder="https://images.example.com/design.jpg"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Sales</label>
+                      <Input
+                        type="number"
+                        value={editorDraft.listing?.sales ?? ""}
+                        onChange={(value) =>
+                          setEditorDraft((prev) => ({ ...prev, listing: { ...(prev.listing || {}), sales: value } }))
+                        }
+                        placeholder="0"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Listing Notes</label>
+                      <Input
+                        value={editorDraft.listing?.notes || ""}
+                        onChange={(value) =>
+                          setEditorDraft((prev) => ({ ...prev, listing: { ...(prev.listing || {}), notes: value } }))
+                        }
+                        placeholder="Launch notes, pricing, performance..."
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Notes</label>
+                <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                  <Btn variant="ghost" onClick={() => applyFormat("bold")} style={{ fontSize: 13, padding: "6px 10px" }}>
+                    Bold
+                  </Btn>
+                  <Btn variant="ghost" onClick={() => applyFormat("italic")} style={{ fontSize: 13, padding: "6px 10px" }}>
+                    Italic
+                  </Btn>
+                  <Btn variant="ghost" onClick={() => applyFormat("insertUnorderedList")} style={{ fontSize: 13, padding: "6px 10px" }}>
+                    Bullets
+                  </Btn>
+                </div>
+                <div
+                  ref={editorRef}
+                  contentEditable
+                  suppressContentEditableWarning
+                  onInput={(event) => {
+                    const notesHtml = event.currentTarget?.innerHTML || "<p></p>";
+                    setEditorDraft((prev) => ({ ...prev, notesHtml }));
+                  }}
+                  style={{
+                    minHeight: 220,
+                    background: C.card,
+                    border: `1px solid ${C.border}`,
+                    borderRadius: 10,
+                    padding: 14,
+                    color: C.text,
+                    fontFamily: sansFont,
+                    fontSize: 15,
+                    lineHeight: 1.6,
+                    outline: "none",
+                  }}
+                />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginTop: 6 }}>
+                <Btn variant="danger" onClick={removeIdea}>
+                  Delete
+                </Btn>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <Btn variant="ghost" onClick={() => setActiveIdeaId(null)}>
+                    Close
+                  </Btn>
+                  <Btn
+                    onClick={async () => {
+                      const previousStatus = activeIdea.status;
+                      await saveEditor();
+                      if (editorDraft.status === "posted" && previousStatus !== "posted") {
+                        setCelebration({
+                          title: editorDraft.title || "Untitled Idea",
+                          message: "Nice work. You moved an idea all the way to Posted.",
+                        });
+                      }
+                    }}
+                  >
+                    Save Idea
+                  </Btn>
+                </div>
+              </div>
+            </div>
+
+            <datalist id="idea-brief-options">
+              {briefOptions.map((option) => (
+                <option key={option.id} value={option.id} />
+              ))}
+            </datalist>
+            <datalist id="idea-trend-options">
+              {trendOptions.map((option) => (
+                <option key={option} value={option} />
+              ))}
+            </datalist>
+            <datalist id="idea-keyword-options">
+              {keywordOptions.map((option) => (
+                <option key={option} value={option} />
+              ))}
+            </datalist>
+          </aside>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── NICHE HOME VIEW ───────────────────────────
+function OpportunityTreeWorkspace({ trees, onSave, onAddNodeToBacklog }) {
+  const [draftTrees, setDraftTrees] = useState(trees || []);
+  const [activeTreeId, setActiveTreeId] = useState(() => trees?.[0]?.id || null);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const lastSavedSnapshot = useRef(JSON.stringify(trees || []));
+
+  useEffect(() => {
+    const incoming = trees || [];
+    const serialized = JSON.stringify(incoming);
+    lastSavedSnapshot.current = serialized;
+    setDraftTrees((prev) => (JSON.stringify(prev) === serialized ? prev : incoming));
+    setActiveTreeId((prev) => {
+      if (prev && incoming.some((tree) => tree.id === prev)) {
+        return prev;
+      }
+      return incoming[0]?.id || null;
+    });
+  }, [trees]);
+
+  useEffect(() => {
+    const serialized = JSON.stringify(draftTrees);
+    if (serialized === lastSavedSnapshot.current) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(async () => {
+      lastSavedSnapshot.current = serialized;
+      await onSave(draftTrees);
+    }, 350);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [draftTrees, onSave]);
+
+  const mutateTrees = useCallback((updater) => {
+    setDraftTrees((prev) => updater(prev));
+  }, []);
+
+  const createTree = useCallback(() => {
+    const title = window.prompt("Name this Opportunity Solution Tree", `OST ${draftTrees.length + 1}`);
+    if (title === null) return;
+
+    const nextTree = createOpportunityTree(title.trim() || `OST ${draftTrees.length + 1}`);
+    mutateTrees((prev) => [...prev, nextTree]);
+    setActiveTreeId(nextTree.id);
+  }, [draftTrees.length, mutateTrees]);
+
+  const updateTreeMeta = useCallback((treeId, updates) => {
+    mutateTrees((prev) =>
+      prev.map((tree) =>
+        tree.id === treeId
+          ? {
+              ...tree,
+              ...updates,
+              updatedAt: new Date().toISOString(),
+            }
+          : tree
+      )
+    );
+  }, [mutateTrees]);
+
+  const updateNode = useCallback((treeId, nodeId, updater) => {
+    mutateTrees((prev) =>
+      prev.map((tree) => {
+        if (tree.id !== treeId) return tree;
+        const result = updateOstNode(tree.outcome, nodeId, updater);
+        if (!result.updated) return tree;
+
+        return {
+          ...tree,
+          outcome: result.node,
+          updatedAt: new Date().toISOString(),
+        };
+      })
+    );
+  }, [mutateTrees]);
+
+  const addChildNode = useCallback((treeId, nodeId, type) => {
+    updateNode(treeId, nodeId, (node) => ({
+      ...node,
+      children: [...(node.children || []), createOstNode(type)],
+    }));
+  }, [updateNode]);
+
+  const deleteNode = useCallback((treeId, node) => {
+    const descendants = countOstDescendants(node);
+    const warning = descendants
+      ? `Delete "${node.title || OST_NODE_LABELS[node.type]}" and its ${descendants} child node${descendants === 1 ? "" : "s"}?`
+      : `Delete "${node.title || OST_NODE_LABELS[node.type]}"?`;
+
+    if (!window.confirm(warning)) {
+      return;
+    }
+
+    mutateTrees((prev) =>
+      prev.map((tree) => {
+        if (tree.id !== treeId) return tree;
+        const result = deleteOstNode(tree.outcome, node.id);
+        if (!result.deleted) return tree;
+
+        return {
+          ...tree,
+          outcome: result.node,
+          updatedAt: new Date().toISOString(),
+        };
+      })
+    );
+  }, [mutateTrees]);
+
+  const deleteTree = useCallback((tree) => {
+    const descendants = countOstDescendants(tree.outcome);
+    const warning = descendants
+      ? `Delete "${tree.title}" and all ${descendants + 1} nodes in this tree?`
+      : `Delete "${tree.title}"?`;
+
+    if (!window.confirm(warning)) {
+      return;
+    }
+
+    mutateTrees((prev) => prev.filter((item) => item.id !== tree.id));
+    setActiveTreeId((prev) => (prev === tree.id ? null : prev));
+  }, [mutateTrees]);
+
+  const copyNodeToTree = useCallback((sourceTreeId, node, targetTreeId) => {
+    if (!targetTreeId || targetTreeId === sourceTreeId) return;
+
+    const cloned = cloneOstNode(node);
+    mutateTrees((prev) =>
+      prev.map((tree) => {
+        if (tree.id !== targetTreeId) return tree;
+
+        return {
+          ...tree,
+          outcome: {
+            ...tree.outcome,
+            children: [...(tree.outcome.children || []), cloned],
+          },
+          updatedAt: new Date().toISOString(),
+        };
+      })
+    );
+  }, [mutateTrees]);
+
+  return (
+    <section style={{ marginTop: 34 }}>
+      <div
+        style={{
+          background: "linear-gradient(135deg, rgba(15,23,42,0.96), rgba(17,24,39,0.92))",
+          border: `1px solid ${C.border}`,
+          borderRadius: 18,
+          padding: 22,
+          boxShadow: "0 18px 42px rgba(0,0,0,0.22)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontFamily: font, color: C.accent, fontSize: 13, textTransform: "uppercase", letterSpacing: 1.2 }}>
+              Opportunity Solution Trees
+            </div>
+            <h2 style={{ margin: "6px 0 6px", fontSize: 28, color: C.white, fontFamily: sansFont }}>
+              Explore outcomes, opportunities, and experiments without leaving Ideas
+            </h2>
+            <p style={{ margin: 0, maxWidth: 780, color: C.textDim, fontSize: 15, lineHeight: 1.6 }}>
+              Keep one OST open at a time, map the path from the customer outcome to concrete tests, and capture notes directly on every node.
+            </p>
+          </div>
+          <Btn onClick={createTree}>+ New OST</Btn>
+        </div>
+
+        <div style={{ marginTop: 18, border: `1px solid ${C.border}`, borderRadius: 14, background: "rgba(255,255,255,0.02)" }}>
+          <button
+            type="button"
+            onClick={() => setGuideOpen((prev) => !prev)}
+            style={{
+              width: "100%",
+              border: "none",
+              background: "transparent",
+              color: C.text,
+              fontFamily: font,
+              padding: "14px 16px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              cursor: "pointer",
+              fontSize: 14,
+            }}
+          >
+            <span>How to use this workspace</span>
+            <span style={{ color: C.textMuted }}>{guideOpen ? "Hide guide" : "Show guide"}</span>
+          </button>
+          {guideOpen && (
+            <div style={{ padding: "0 16px 16px", color: C.textDim, fontSize: 14, lineHeight: 1.7 }}>
+              <div>1. Start each OST with a single desired outcome.</div>
+              <div>2. Break that into customer opportunities, then attach solutions and experiments underneath.</div>
+              <div>3. Use notes on every node for evidence, customer quotes, risks, or next steps.</div>
+              <div>4. Deleting a node will also delete its children, and the app warns before doing that.</div>
+              <div>5. If you have multiple OSTs, you can copy a subtree into another tree to reuse the work.</div>
+            </div>
+          )}
+        </div>
+
+        {!draftTrees.length ? (
+          <div
+            style={{
+              marginTop: 20,
+              padding: 28,
+              borderRadius: 16,
+              border: `1px dashed ${C.borderLight}`,
+              textAlign: "center",
+              color: C.textMuted,
+              background: "rgba(255,255,255,0.02)",
+            }}
+          >
+            Create your first OST to start linking product outcomes to customer opportunities and experiments.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 14, marginTop: 20 }}>
+            {draftTrees.map((tree) => {
+              const isOpen = activeTreeId === tree.id;
+              const counts = countOstNodesByType(tree.outcome, {});
+
+              return (
+                <div
+                  key={tree.id}
+                  style={{
+                    border: `1px solid ${isOpen ? C.borderLight : C.border}`,
+                    borderRadius: 16,
+                    overflow: "hidden",
+                    background: isOpen ? "rgba(15,23,42,0.78)" : "rgba(255,255,255,0.02)",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setActiveTreeId((prev) => (prev === tree.id ? null : tree.id))}
+                    style={{
+                      width: "100%",
+                      border: "none",
+                      background: "transparent",
+                      color: C.text,
+                      padding: "16px 18px",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 14,
+                      cursor: "pointer",
+                      textAlign: "left",
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: C.white }}>{tree.title || "Untitled OST"}</div>
+                      <div style={{ color: C.textMuted, fontSize: 13, marginTop: 4 }}>
+                        {counts.opportunity || 0} opportunities · {counts.solution || 0} solutions · {counts.experiment || 0} experiments
+                      </div>
+                    </div>
+                    <span style={{ color: C.textMuted }}>{isOpen ? "−" : "+"}</span>
+                  </button>
+
+                  {isOpen && (
+                    <div style={{ padding: "0 18px 18px" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 12,
+                          alignItems: "center",
+                          flexWrap: "wrap",
+                          padding: "12px 0 18px",
+                          borderTop: `1px solid ${C.border}`,
+                        }}
+                      >
+                        <Input
+                          value={tree.title || ""}
+                          onChange={(value) => updateTreeMeta(tree.id, { title: value })}
+                          placeholder="OST title"
+                          style={{ minWidth: 260, flex: "1 1 320px" }}
+                        />
+                        <Btn variant="danger" onClick={() => deleteTree(tree)}>
+                          Delete OST
+                        </Btn>
+                      </div>
+
+                      <div
+                        style={{
+                          overflowX: "auto",
+                          paddingBottom: 8,
+                          borderRadius: 14,
+                          background: "rgba(2,6,23,0.45)",
+                          border: `1px solid ${C.border}`,
+                        }}
+                      >
+                        <div style={{ minWidth: 1040, padding: 18 }}>
+                          <OstTreeNode
+                            node={tree.outcome}
+                            treeId={tree.id}
+                            allTrees={draftTrees}
+                            isRoot
+                            onNodeChange={updateNode}
+                            onAddChild={addChildNode}
+                            onDeleteNode={deleteNode}
+                            onCopyNode={copyNodeToTree}
+                            onAddToBacklog={onAddNodeToBacklog}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function OstTreeNode({
+  node,
+  treeId,
+  allTrees,
+  isRoot = false,
+  onNodeChange,
+  onAddChild,
+  onDeleteNode,
+  onCopyNode,
+  onAddToBacklog,
+}) {
+  const [copyTargetTreeId, setCopyTargetTreeId] = useState("");
+  const palette = OST_NODE_COLORS[node.type] || OST_NODE_COLORS.opportunity;
+  const childOptions = OST_CHILD_OPTIONS[node.type] || [];
+  const siblingTrees = allTrees.filter((tree) => tree.id !== treeId);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+      <div
+        style={{
+          width: isRoot ? 320 : 280,
+          maxWidth: "100%",
+          background: palette.background,
+          border: `1px solid ${palette.border}`,
+          borderRadius: 16,
+          padding: 14,
+          boxShadow: "0 16px 30px rgba(0,0,0,0.16)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 10 }}>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "4px 10px",
+              borderRadius: 999,
+              background: palette.chip,
+              color: "#fff",
+              fontSize: 12,
+              fontWeight: 700,
+              letterSpacing: 0.6,
+              textTransform: "uppercase",
+            }}
+          >
+            {OST_NODE_LABELS[node.type]}
+          </span>
+          {!isRoot && (
+            <button
+              type="button"
+              onClick={() => onDeleteNode(treeId, node)}
+              style={{
+                border: "none",
+                background: "transparent",
+                color: "#fca5a5",
+                cursor: "pointer",
+                fontSize: 13,
+                fontFamily: font,
+              }}
+            >
+              Delete
+            </button>
+          )}
+        </div>
+
+        <Input
+          value={node.title || ""}
+          onChange={(value) => onNodeChange(treeId, node.id, (current) => ({ ...current, title: value }))}
+          placeholder={`${OST_NODE_LABELS[node.type]} title`}
+          style={{ width: "100%", marginBottom: 10, background: "rgba(255,255,255,0.92)", color: "#0f172a" }}
+        />
+
+        <textarea
+          value={node.notes || ""}
+          onChange={(event) =>
+            onNodeChange(treeId, node.id, (current) => ({ ...current, notes: event.target.value }))
+          }
+          placeholder="Notes, evidence, insights, risks, or open questions..."
+          style={{
+            width: "100%",
+            minHeight: 96,
+            resize: "vertical",
+            borderRadius: 12,
+            border: `1px solid ${palette.border}`,
+            background: "rgba(255,255,255,0.9)",
+            color: "#0f172a",
+            padding: 12,
+            fontFamily: sansFont,
+            fontSize: 14,
+            lineHeight: 1.5,
+            outline: "none",
+          }}
+        />
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+          <Btn
+            variant="ghost"
+            onClick={() => onAddToBacklog(node)}
+            style={{ fontSize: 12, padding: "7px 10px" }}
+          >
+            + Add to Idea Backlog
+          </Btn>
+          {childOptions.map((type) => (
+            <Btn
+              key={type}
+              variant="ghost"
+              onClick={() => onAddChild(treeId, node.id, type)}
+              style={{ fontSize: 12, padding: "7px 10px" }}
+            >
+              + {OST_NODE_LABELS[type]}
+            </Btn>
+          ))}
+        </div>
+
+        {!isRoot && siblingTrees.length > 0 && (
+          <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <select
+              value={copyTargetTreeId}
+              onChange={(event) => setCopyTargetTreeId(event.target.value)}
+              style={{
+                minWidth: 170,
+                background: "rgba(15,23,42,0.9)",
+                color: C.text,
+                border: `1px solid ${C.border}`,
+                borderRadius: 8,
+                padding: "9px 10px",
+                fontFamily: font,
+              }}
+            >
+              <option value="">Copy subtree to...</option>
+              {siblingTrees.map((tree) => (
+                <option key={tree.id} value={tree.id}>
+                  {tree.title}
+                </option>
+              ))}
+            </select>
+            <Btn
+              variant="ghost"
+              onClick={() => {
+                if (!copyTargetTreeId) return;
+                onCopyNode(treeId, node, copyTargetTreeId);
+                setCopyTargetTreeId("");
+              }}
+              disabled={!copyTargetTreeId}
+              style={{ fontSize: 12, padding: "7px 10px" }}
+            >
+              Copy subtree
+            </Btn>
+          </div>
+        )}
+      </div>
+
+      {!!node.children?.length && (
+        <>
+          <div style={{ width: 2, height: 24, background: C.borderLight }} />
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "center",
+              gap: 18,
+              width: "100%",
+              flexWrap: "nowrap",
+            }}
+          >
+            {node.children.map((child) => (
+              <OstTreeNode
+                key={child.id}
+                node={child}
+                treeId={treeId}
+                allTrees={allTrees}
+                onNodeChange={onNodeChange}
+                onAddChild={onAddChild}
+                onDeleteNode={onDeleteNode}
+                onCopyNode={onCopyNode}
+                onAddToBacklog={onAddToBacklog}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function NicheHomeView({
+  data,
+  selectedNicheContext,
+  setSelectedNicheContext,
+  openNicheHome,
+  plan,
+  usage,
+  setUsage,
+  loading,
+  setLoading,
+  addItem,
+  updateItem,
+}) {
+  const niche = selectedNicheContext?.niche || "";
+  const subNiche = selectedNicheContext?.subNiche || "";
+  const notesRef = useRef(null);
+  const [profileDraft, setProfileDraft] = useState(null);
+  const [savedBanner, setSavedBanner] = useState(false);
+  const limits = PLAN_LIMITS[plan];
+  const nicheKey = getNicheProfileId(niche);
+
+  const relatedNiches = useMemo(
+    () => (data.niches || []).filter((item) => normalizeCompareValue(item.niche) === nicheKey),
+    [data.niches, nicheKey]
+  );
+  const relatedKeywords = useMemo(
+    () =>
+      (data.keywords || []).filter((item) => {
+        if (normalizeCompareValue(item.niche) !== nicheKey) return false;
+        return !subNiche || normalizeCompareValue(item.subNiche) === normalizeCompareValue(subNiche);
+      }),
+    [data.keywords, nicheKey, subNiche]
+  );
+  const relatedBriefs = useMemo(
+    () =>
+      (data.briefs || []).filter((item) => {
+        if (normalizeCompareValue(item.niche) !== nicheKey) return false;
+        return !subNiche || normalizeCompareValue(item.subNiche) === normalizeCompareValue(subNiche);
+      }),
+    [data.briefs, nicheKey, subNiche]
+  );
+  const relatedIdeas = useMemo(
+    () =>
+      (data.ideas || []).filter((item) => normalizeCompareValue(item.niche) === nicheKey),
+    [data.ideas, nicheKey]
+  );
+  const briefIdSet = useMemo(
+    () => new Set(relatedBriefs.map((item) => item.id).filter(Boolean)),
+    [relatedBriefs]
+  );
+  const relatedListings = useMemo(
+    () =>
+      (data.inventory || []).filter((item) => {
+        if (briefIdSet.has(item.briefId)) return true;
+        if (!subNiche) return false;
+        return normalizeCompareValue(item.design).includes(normalizeCompareValue(subNiche));
+      }),
+    [data.inventory, briefIdSet, subNiche]
+  );
+  const profileIndex = useMemo(
+    () => (data.nicheProfiles || []).findIndex((item) => getNicheProfileId(item?.niche) === nicheKey),
+    [data.nicheProfiles, nicheKey]
+  );
+  const profile = profileIndex >= 0 ? data.nicheProfiles[profileIndex] : null;
+  const subNicheOptions = useMemo(
+    () =>
+      Array.from(new Set(relatedNiches.map((item) => item.subNiche || "General").filter(Boolean))).sort(),
+    [relatedNiches]
+  );
+  const focusNiches = useMemo(
+    () =>
+      subNiche
+        ? relatedNiches.filter((item) => normalizeCompareValue(item.subNiche) === normalizeCompareValue(subNiche))
+        : relatedNiches,
+    [relatedNiches, subNiche]
+  );
+  const avgScore = useMemo(() => {
+    const scores = focusNiches.map((item) => Number(item.score)).filter((value) => !Number.isNaN(value));
+    if (!scores.length) return "—";
+    return (scores.reduce((sum, value) => sum + value, 0) / scores.length).toFixed(1);
+  }, [focusNiches]);
+
+  useEffect(() => {
+    if (!niche) return;
+    setProfileDraft({
+      niche,
+      notesHtml: profile?.notesHtml || "<p></p>",
+      aiResearch: profile?.aiResearch || null,
+      updatedAt: profile?.updatedAt || "",
+    });
+  }, [niche, profile]);
+
+  useEffect(() => {
+    if (!profileDraft || !notesRef.current) return;
+    const nextHtml = profileDraft.notesHtml || "<p></p>";
+    if (notesRef.current.innerHTML !== nextHtml) {
+      notesRef.current.innerHTML = nextHtml;
+    }
+  }, [profileDraft]);
+
+  useEffect(() => {
+    if (!savedBanner) return undefined;
+    const timeoutId = window.setTimeout(() => setSavedBanner(false), 1800);
+    return () => window.clearTimeout(timeoutId);
+  }, [savedBanner]);
+
+  const saveProfile = useCallback(
+    async (updates = {}) => {
+      if (!niche) return;
+      const nextProfile = {
+        niche,
+        notesHtml: notesRef.current?.innerHTML || profileDraft?.notesHtml || "<p></p>",
+        aiResearch: profileDraft?.aiResearch || null,
+        updatedAt: new Date().toISOString(),
+        ...updates,
+      };
+
+      if (profileIndex >= 0) {
+        await updateItem("nicheProfiles", profileIndex, nextProfile);
+      } else {
+        await addItem("nicheProfiles", nextProfile);
+      }
+
+      setProfileDraft(nextProfile);
+      setSavedBanner(true);
+    },
+    [addItem, niche, profileDraft, profileIndex, updateItem]
+  );
+
+  const runNicheResearch = async () => {
+    if (!niche) return;
+    const featureKey = plan === "business" ? "research" : "dceb";
+    if (plan === "free") return;
+
+    if (featureKey === "research") {
+      const allowed = await checkAndConsumeUsage("research", plan, usage, setUsage);
+      if (!allowed) {
+        alert(`AI Research limit reached (${limits.research}/day). Resets at midnight.`);
+        return;
+      }
+    } else {
+      const allowed = await checkAndConsumeUsage("dceb", plan, usage, setUsage);
+      if (!allowed) {
+        alert(`DCEB limit reached (${limits.dceb}/day). Resets at midnight.`);
+        return;
+      }
+    }
+
+    setLoading(true);
+    const result = await askClaudeJSON(
+      `Build a niche research dashboard summary for the Print on Demand niche "${niche}"${subNiche ? ` with a focus on sub-niche "${subNiche}"` : ""}.
+
+Return JSON:
+{
+  "overview":"2-3 sentence summary",
+  "audience":"who buys in this niche",
+  "opportunities":["...","...","..."],
+  "risks":["...","..."],
+  "suggestedSubNiches":["...","...","..."],
+  "suggestedKeywords":["...","...","..."],
+  "nextActions":["...","...","..."]
+}`,
+      "You are a Print on Demand niche strategist. Be specific, practical, and concise.",
+      featureKey
+    );
+    setLoading(false);
+
+    if (!result) {
+      alert("Could not generate niche research right now.");
+      return;
+    }
+
+    await saveProfile({ aiResearch: result });
+  };
+
+  const applyFormat = (command) => {
+    if (!notesRef.current) return;
+    notesRef.current.focus();
+    document.execCommand(command, false);
+  };
+
+  if (!niche) {
+    return (
+      <div>
+        <h1 style={{ fontSize: 27, fontWeight: 700, margin: "0 0 8px" }}>Niche Home</h1>
+        <p style={{ color: C.textDim, fontSize: 18, margin: 0, fontFamily: font }}>
+          Open a niche from the tracker to see its dashboard, related records, and notes.
+        </p>
+      </div>
+    );
+  }
+
+  const focusTitle = subNiche ? `${niche} / ${subNiche}` : niche;
+  const primaryNicheRecord = focusNiches[0] || relatedNiches[0] || null;
+
+  return (
+    <div>
+      {savedBanner && (
+        <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 8, background: C.successDim, color: C.success, fontFamily: font, fontSize: 14 }}>
+          Niche profile saved.
+        </div>
+      )}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 24 }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+            <Badge color="accent">Niche Home</Badge>
+            {subNiche && <Badge color="warn">Focused on {subNiche}</Badge>}
+          </div>
+          <h1 style={{ fontSize: 30, fontWeight: 700, margin: "0 0 6px", fontFamily: sansFont }}>{focusTitle}</h1>
+          <p style={{ color: C.textDim, fontSize: 17, margin: 0, fontFamily: font }}>
+            A patient-chart style dashboard for this niche, with related sub-niches, briefs, listings, and notes.
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {plan === "free" ? (
+            <LockedBtn tooltip="Upgrade to Starter or Business to run AI niche research.">✦ AI Niche Research</LockedBtn>
+          ) : (
+            <Btn onClick={runNicheResearch} disabled={loading}>
+              ✦ AI Niche Research
+            </Btn>
+          )}
+          <Btn variant="ghost" onClick={() => setSelectedNicheContext({ niche, subNiche: "" })}>
+            Reset Focus
+          </Btn>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 24 }}>
+        <StatCard label="Sub-Niches" value={subNicheOptions.length} sub="tracked under this niche" />
+        <StatCard label="Keywords" value={relatedKeywords.length} sub="linked research terms" color={C.warn} />
+        <StatCard label="Briefs" value={relatedBriefs.length} sub="design concepts" color="#8b5cf6" />
+        <StatCard label="Listings" value={relatedListings.length} sub="live or tracked" color={C.success} />
+        <StatCard label="Avg DCEB" value={avgScore} sub="for tracked niche rows" color={C.accent} />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 24, marginBottom: 24 }}>
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 20 }}>
+          <div style={{ fontFamily: font, fontSize: 14, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14 }}>
+            Niche Snapshot
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 14 }}>
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14 }}>
+              <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 6, fontFamily: font }}>Current Status</div>
+              <div style={{ color: C.white, fontSize: 18, fontWeight: 700 }}>{primaryNicheRecord?.status || "Researching"}</div>
+            </div>
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14 }}>
+              <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 6, fontFamily: font }}>Latest Score</div>
+              <div style={{ color: C.white, fontSize: 18, fontWeight: 700 }}>{primaryNicheRecord?.score || "—"}</div>
+            </div>
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14 }}>
+              <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 6, fontFamily: font }}>Top Keyword</div>
+              <div style={{ color: C.white, fontSize: 18, fontWeight: 700 }}>{relatedKeywords[0]?.keyword || "—"}</div>
+            </div>
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14 }}>
+              <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 6, fontFamily: font }}>Latest Brief</div>
+              <div style={{ color: C.white, fontSize: 18, fontWeight: 700 }}>{relatedBriefs[0]?.id || "—"}</div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 18 }}>
+            <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 10, fontFamily: font, textTransform: "uppercase", letterSpacing: 1 }}>
+              Sub-Niche Lineup
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {subNicheOptions.length ? (
+                subNicheOptions.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => openNicheHome(niche, option === "General" ? "" : option)}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 999,
+                      border: `1px solid ${normalizeCompareValue(subNiche) === normalizeCompareValue(option === "General" ? "" : option) ? C.accent : C.border}`,
+                      background: normalizeCompareValue(subNiche) === normalizeCompareValue(option === "General" ? "" : option) ? C.accentGlow : C.surface,
+                      color: normalizeCompareValue(subNiche) === normalizeCompareValue(option === "General" ? "" : option) ? C.accent : C.text,
+                      cursor: "pointer",
+                      fontFamily: font,
+                    }}
+                  >
+                    {option}
+                  </button>
+                ))
+              ) : (
+                <div style={{ color: C.textMuted }}>No sub-niches tracked yet.</div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 20 }}>
+          <div style={{ fontFamily: font, fontSize: 14, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14 }}>
+            AI Research Snapshot
+          </div>
+          {profileDraft?.aiResearch ? (
+            <div style={{ display: "grid", gap: 14 }}>
+              <div style={{ color: C.text, lineHeight: 1.7 }}>{profileDraft.aiResearch.overview}</div>
+              <div>
+                <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 6, fontFamily: font }}>Audience</div>
+                <div style={{ color: C.white }}>{profileDraft.aiResearch.audience}</div>
+              </div>
+              {profileDraft.aiResearch.opportunities?.length > 0 && (
+                <div>
+                  <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 6, fontFamily: font }}>Opportunities</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {profileDraft.aiResearch.opportunities.map((item, index) => (
+                      <Badge key={index} color="success">{item}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {profileDraft.aiResearch.suggestedKeywords?.length > 0 && (
+                <div>
+                  <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 6, fontFamily: font }}>Suggested Keywords</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {profileDraft.aiResearch.suggestedKeywords.map((item, index) => (
+                      <Badge key={index}>{item}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ color: C.textMuted, lineHeight: 1.7 }}>
+              Run AI niche research to generate a strategic snapshot, opportunity set, and next steps for this niche.
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 24 }}>
+        <div style={{ display: "grid", gap: 24 }}>
+          <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 20 }}>
+            <div style={{ fontFamily: font, fontSize: 14, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14 }}>
+              Related Work
+            </div>
+            <div style={{ display: "grid", gap: 12 }}>
+              <div style={{ background: C.surface, borderRadius: 10, padding: 14 }}>
+                <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 8, fontFamily: font }}>Keywords</div>
+                {relatedKeywords.length ? relatedKeywords.slice(0, 6).map((item, index) => (
+                  <div key={index} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "6px 0", borderBottom: index < Math.min(relatedKeywords.length, 6) - 1 ? `1px solid ${C.border}` : "none" }}>
+                    <div style={{ color: C.white }}>{item.keyword}</div>
+                    <div style={{ color: C.textMuted }}>{item.volume || "—"}</div>
+                  </div>
+                )) : <div style={{ color: C.textMuted }}>No keywords linked yet.</div>}
+              </div>
+              <div style={{ background: C.surface, borderRadius: 10, padding: 14 }}>
+                <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 8, fontFamily: font }}>Design Briefs</div>
+                {relatedBriefs.length ? relatedBriefs.slice(0, 5).map((item, index) => (
+                  <div key={index} style={{ padding: "6px 0", borderBottom: index < Math.min(relatedBriefs.length, 5) - 1 ? `1px solid ${C.border}` : "none" }}>
+                    <div style={{ color: C.white, fontWeight: 700 }}>{item.id}</div>
+                    <div style={{ color: C.textDim, fontSize: 14 }}>{item.slogan || item.concept}</div>
+                  </div>
+                )) : <div style={{ color: C.textMuted }}>No briefs linked yet.</div>}
+              </div>
+              <div style={{ background: C.surface, borderRadius: 10, padding: 14 }}>
+                <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 8, fontFamily: font }}>Listings</div>
+                {relatedListings.length ? relatedListings.slice(0, 5).map((item, index) => (
+                  <div key={index} style={{ padding: "6px 0", borderBottom: index < Math.min(relatedListings.length, 5) - 1 ? `1px solid ${C.border}` : "none" }}>
+                    <div style={{ color: C.white, fontWeight: 700 }}>{item.design || item.sku}</div>
+                    <div style={{ color: C.textDim, fontSize: 14 }}>{item.platform} · {item.status}</div>
+                  </div>
+                )) : <div style={{ color: C.textMuted }}>No linked listings yet.</div>}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 20 }}>
+            <div style={{ fontFamily: font, fontSize: 14, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14 }}>
+              Ideas Queue
+            </div>
+            {relatedIdeas.length ? relatedIdeas.slice(0, 6).map((idea, index) => (
+              <div key={idea.id || index} style={{ padding: "8px 0", borderBottom: index < Math.min(relatedIdeas.length, 6) - 1 ? `1px solid ${C.border}` : "none" }}>
+                <div style={{ color: C.white, fontWeight: 700 }}>{idea.title}</div>
+                <div style={{ color: C.textDim, fontSize: 14 }}>{idea.status || "backlog"}</div>
+              </div>
+            )) : <div style={{ color: C.textMuted }}>No ideas tied to this niche yet.</div>}
+          </div>
+        </div>
+
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <div style={{ fontFamily: font, fontSize: 14, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>
+              Notes
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Btn variant="ghost" onClick={() => applyFormat("bold")} style={{ fontSize: 13, padding: "6px 10px" }}>Bold</Btn>
+              <Btn variant="ghost" onClick={() => applyFormat("italic")} style={{ fontSize: 13, padding: "6px 10px" }}>Italic</Btn>
+              <Btn variant="ghost" onClick={() => applyFormat("insertUnorderedList")} style={{ fontSize: 13, padding: "6px 10px" }}>Bullets</Btn>
+            </div>
+          </div>
+          <div
+            ref={notesRef}
+            contentEditable
+            suppressContentEditableWarning
+            onInput={(event) => {
+              const notesHtml = event.currentTarget?.innerHTML || "<p></p>";
+              setProfileDraft((prev) => ({ ...(prev || {}), niche, notesHtml }));
+            }}
+            style={{
+              minHeight: 320,
+              background: C.surface,
+              border: `1px solid ${C.border}`,
+              borderRadius: 10,
+              padding: 14,
+              color: C.text,
+              fontFamily: sansFont,
+              fontSize: 15,
+              lineHeight: 1.6,
+              outline: "none",
+            }}
+          />
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginTop: 12 }}>
+            <div style={{ color: C.textMuted, fontSize: 13 }}>
+              Use this as the chart note for the niche: observations, blockers, ideas, and follow-up tasks.
+            </div>
+            <Btn onClick={() => saveProfile()}>Save Notes</Btn>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── GUIDE VIEW ────────────────────────────────
 function GuideView() {
   const sectionStyle = { marginBottom: 32 };
@@ -3936,4 +8337,5 @@ function GuideView() {
     </div>
   );
 }
+
 

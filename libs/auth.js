@@ -145,6 +145,70 @@ function buildWelcomeEmail(user) {
   };
 }
 
+function buildNewSignupNotificationEmail(user) {
+  const signedUpAt = new Date().toLocaleString("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+  const fullName = user?.name?.trim() || "No name provided";
+  const email = user?.email?.trim() || "No email provided";
+  const userId = user?.id || "Unavailable";
+  const dashboardUrl = `https://${config.domainName}${config.auth.callbackUrl}`;
+
+  return {
+    subject: `New PODTrackerPro signup: ${email}`,
+    text: [
+      "A new user just signed up for PODTrackerPro.",
+      "",
+      `Name: ${fullName}`,
+      `Email: ${email}`,
+      `User ID: ${userId}`,
+      `Signed up: ${signedUpAt}`,
+      "",
+      `Open dashboard: ${dashboardUrl}`,
+    ].join("\n"),
+    html: `
+      <div style="margin:0; padding:24px; background:#f8fafc; font-family:Arial, sans-serif; color:#0f172a;">
+        <div style="max-width:640px; margin:0 auto; background:#ffffff; border:1px solid #e2e8f0; border-radius:18px; overflow:hidden;">
+          <div style="padding:24px 28px; background:linear-gradient(180deg, #0f172a 0%, #111827 100%);">
+            <div style="font-size:12px; letter-spacing:1.4px; text-transform:uppercase; color:#93c5fd; font-weight:700; margin-bottom:10px;">
+              PODTrackerPro
+            </div>
+            <h1 style="margin:0; font-size:24px; line-height:1.3; color:#ffffff;">
+              New signup received
+            </h1>
+          </div>
+          <div style="padding:24px 28px;">
+            <p style="margin:0 0 16px; font-size:15px; line-height:1.7; color:#334155;">
+              A new user just created an account.
+            </p>
+            <div style="display:grid; gap:12px; margin-bottom:20px;">
+              <div style="padding:14px 16px; border:1px solid #e2e8f0; border-radius:12px; background:#f8fafc;">
+                <strong>Name:</strong> ${fullName}
+              </div>
+              <div style="padding:14px 16px; border:1px solid #e2e8f0; border-radius:12px; background:#f8fafc;">
+                <strong>Email:</strong> ${email}
+              </div>
+              <div style="padding:14px 16px; border:1px solid #e2e8f0; border-radius:12px; background:#f8fafc;">
+                <strong>User ID:</strong> ${userId}
+              </div>
+              <div style="padding:14px 16px; border:1px solid #e2e8f0; border-radius:12px; background:#f8fafc;">
+                <strong>Signed up:</strong> ${signedUpAt}
+              </div>
+            </div>
+            <a
+              href="${dashboardUrl}"
+              style="display:inline-block; background:#2563eb; color:#ffffff; text-decoration:none; padding:12px 18px; border-radius:10px; font-weight:700;"
+            >
+              Open Dashboard
+            </a>
+          </div>
+        </div>
+      </div>
+    `,
+  };
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   
   // Set any random key in .env.local
@@ -235,6 +299,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         });
       } catch (error) {
         console.error("Failed to send onboarding email", error);
+      }
+
+      if (!config.resend.supportEmail) {
+        return;
+      }
+
+      try {
+        const notification = buildNewSignupNotificationEmail(user);
+        await sendEmail({
+          to: config.resend.supportEmail,
+          subject: notification.subject,
+          text: notification.text,
+          html: notification.html,
+          replyTo: user.email,
+        });
+      } catch (error) {
+        console.error("Failed to send signup notification email", error);
       }
     },
   },

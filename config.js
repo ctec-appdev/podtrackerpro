@@ -68,7 +68,7 @@ const config = {
     // REQUIRED - Email 'From' field to be used when sending other emails, like abandoned carts, updates etc..
     fromAdmin: `PODTrackerPro <hello@app.podtrackerpro.com>`,
     // Email shown to customer if need support. Leave empty if not needed => if empty, set up Crisp above, otherwise you won't be able to offer customer support."
-    supportEmail: "marc.louvion@gmail.com",
+    supportEmail: "support@podtrackerpro.com",
   },
   colors: {
     // REQUIRED - The DaisyUI theme to use (added to the main layout.js). Leave blank for default (light & dark mode). If you any other theme than light/dark, you need to add it in config.tailwind.js in daisyui.themes.

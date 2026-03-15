@@ -89,7 +89,15 @@ const TABS = [
       { id: "ideas", label: "New Ideas", icon: "✸" },
     ],
   },
-  { id: "inventory", label: "Listings", icon: "▤" },
+  {
+    id: "listings-group",
+    label: "Listings",
+    icon: "▤",
+    children: [
+      { id: "inventory", label: "Tracker", icon: "▤" },
+      { id: "reports", label: "Reports", icon: "≡" },
+    ],
+  },
   { id: "guide", label: "Guide", icon: "?" },
 ];
 
@@ -109,6 +117,7 @@ const VALID_TAB_IDS = new Set([
   "seo",
   "ideas",
   "inventory",
+  "reports",
   "guide",
 ]);
 
@@ -2840,6 +2849,7 @@ export default function PODTracker() {
         {tab === "inventory" && (
           <InventoryView data={data} addItem={addItem} deleteItem={deleteItem} updateItem={updateItem} importItems={importItems} plan={plan} />
         )}
+        {tab === "reports" && <ReportsView data={data} />}
         {tab === "trademark" && <TrademarkView loading={loading} setLoading={setLoading} plan={plan} usage={usage} setUsage={setUsage} />}
         {tab === "research" && <ResearchView data={data} loading={loading} setLoading={setLoading} plan={plan} usage={usage} setUsage={setUsage} />}
         {tab === "guide" && <GuideView plan={plan} />}
@@ -2850,11 +2860,16 @@ export default function PODTracker() {
 
 // ─── DASHBOARD VIEW ────────────────────────────
 function DashboardView({ data, setTab, plan, usage, openNicheHome }) {
+  const [platformView, setPlatformView] = useState("counts");
   const activeListings = data.inventory.filter((i) => i.status === "Active").length;
   const byPlatform = PLATFORMS.map((p) => ({
     platform: p,
     count: data.inventory.filter((i) => i.platform === p).length,
   }));
+  const platformDistribution = buildPlatformDistribution(data);
+  const platformTotal = platformDistribution.reduce((sum, item) => sum + item.count, 0);
+  const pieRadius = 78;
+  const pieCircumference = 2 * Math.PI * pieRadius;
   const recentTrends = data.trends.slice(-5).reverse();
   const recentNiches = data.niches.slice(-5).reverse();
   const pendingBriefs = data.briefs.filter((b) => b.status !== "Listed" && b.status !== "Rejected").length;
@@ -2919,19 +2934,36 @@ function DashboardView({ data, setTab, plan, usage, openNicheHome }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
         <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: 20 }}>
-          <h3
-            style={{
-              fontSize: 19,
-              fontFamily: font,
-              color: C.textMuted,
-              textTransform: "uppercase",
-              letterSpacing: 1,
-              margin: "0 0 16px",
-            }}
-          >
-            Listings by Platform
-          </h3>
-          {byPlatform.map((p) => (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 16 }}>
+            <h3
+              style={{
+                fontSize: 19,
+                fontFamily: font,
+                color: C.textMuted,
+                textTransform: "uppercase",
+                letterSpacing: 1,
+                margin: 0,
+              }}
+            >
+              Listings by Platform
+            </h3>
+            <button
+              onClick={() => setPlatformView((prev) => (prev === "counts" ? "chart" : "counts"))}
+              style={{
+                border: `1px solid ${C.border}`,
+                background: C.surface,
+                color: C.text,
+                borderRadius: 999,
+                padding: "6px 12px",
+                fontSize: 13,
+                fontFamily: font,
+                cursor: "pointer",
+              }}
+            >
+              {platformView === "counts" ? "Pie Chart" : "Counts"}
+            </button>
+          </div>
+          {platformView === "counts" && byPlatform.map((p) => (
             <div
               key={p.platform}
               style={{
@@ -2946,6 +2978,49 @@ function DashboardView({ data, setTab, plan, usage, openNicheHome }) {
               <span style={{ fontSize: 21, fontWeight: 700, color: C.white, fontFamily: font }}>{p.count}</span>
             </div>
           ))}
+          {platformView === "chart" && (
+            <div style={{ display: "grid", gap: 16, justifyItems: "center" }}>
+              <svg viewBox="0 0 240 240" style={{ width: "100%", maxWidth: 240, height: "auto", display: "block" }} role="img" aria-label="Dashboard platform distribution chart">
+                <circle cx="120" cy="120" r={pieRadius} fill="none" stroke="rgba(148, 163, 184, 0.18)" strokeWidth="30" />
+                {platformDistribution.reduce((acc, item) => {
+                  const dashLength = platformTotal ? (item.count / platformTotal) * pieCircumference : 0;
+                  const node = (
+                    <circle
+                      key={item.platform}
+                      cx="120"
+                      cy="120"
+                      r={pieRadius}
+                      fill="none"
+                      stroke={item.color}
+                      strokeWidth="30"
+                      strokeDasharray={`${dashLength} ${pieCircumference - dashLength}`}
+                      strokeDashoffset={-acc.offset}
+                      transform="rotate(-90 120 120)"
+                    >
+                      <title>{`${item.label}: ${item.count} listings (${item.share.toFixed(1)}%)`}</title>
+                    </circle>
+                  );
+                  acc.offset += dashLength;
+                  acc.nodes.push(node);
+                  return acc;
+                }, { offset: 0, nodes: [] }).nodes}
+                <circle cx="120" cy="120" r="52" fill={C.card} />
+                <text x="120" y="114" textAnchor="middle" fontSize="12" fill={C.textDim}>Listings</text>
+                <text x="120" y="136" textAnchor="middle" fontSize="24" fontWeight="700" fill={C.text}>{platformTotal}</text>
+              </svg>
+              <div style={{ display: "grid", gap: 8, width: "100%" }}>
+                {platformDistribution.map((item) => (
+                  <div key={item.platform} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 8, color: C.text, fontSize: 14 }}>
+                      <span style={{ width: 10, height: 10, borderRadius: 999, background: item.color, display: "inline-block" }} />
+                      <span>{item.label}</span>
+                    </div>
+                    <div style={{ color: C.textDim, fontSize: 14 }}>{item.count}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: 20 }}>
@@ -4258,6 +4333,654 @@ function SEOView({ data, addItem, deleteItem, updateItem, loading, setLoading, p
 }
 
 // ─── INVENTORY VIEW ────────────────────────────
+
+const REPORT_SERIES_META = {
+  niches: { label: "Niches", color: "#2563eb", accessor: (item) => item?.date },
+  inventory: { label: "Listings", color: "#f97316", accessor: (item) => item?.dateListed },
+  keywords: { label: "Keywords", color: "#7c3aed", accessor: (item) => item?.date },
+  trends: { label: "Trends", color: "#0f766e", accessor: (item) => item?.date },
+};
+
+const NICHE_STATUS_COLORS = {
+  Researching: "#60a5fa",
+  Validated: "#22c55e",
+  Designing: "#f59e0b",
+};
+
+const PLATFORM_REPORT_COLORS = {
+  "Amazon Merch": "#f97316",
+  Etsy: "#ec4899",
+  Redbubble: "#ef4444",
+  "TeeSpring/Spring": "#8b5cf6",
+  TeePublic: "#14b8a6",
+  Other: "#94a3b8",
+};
+
+function toISODateKey(value) {
+  if (!value) return null;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+    const parsed = new Date(trimmed);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+    return null;
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString().slice(0, 10);
+}
+
+function startOfWeek(date) {
+  const next = new Date(date);
+  const day = next.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  next.setDate(next.getDate() + diff);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function formatPeriodKey(date, granularity) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+
+  if (granularity === "year") return `${year}`;
+  if (granularity === "month") return `${year}-${month}`;
+  if (granularity === "week") {
+    const weekStart = startOfWeek(date);
+    return weekStart.toISOString().slice(0, 10);
+  }
+  return `${year}-${month}-${day}`;
+}
+
+function formatPeriodLabel(periodKey, granularity) {
+  if (granularity === "year") return periodKey;
+  if (granularity === "month") return periodKey.slice(2);
+  if (granularity === "week") return `Wk ${periodKey.slice(5)}`;
+  return periodKey.slice(5);
+}
+
+function buildPeriodKeys(granularity) {
+  const today = new Date();
+  const config = {
+    day: 30,
+    week: 12,
+    month: 12,
+    year: 5,
+  };
+
+  if (granularity === "day") {
+    return Array.from({ length: config.day }, (_, index) => {
+      const date = new Date(today);
+      date.setDate(today.getDate() - (config.day - 1 - index));
+      return formatPeriodKey(date, "day");
+    });
+  }
+
+  if (granularity === "week") {
+    const currentWeek = startOfWeek(today);
+    return Array.from({ length: config.week }, (_, index) => {
+      const date = new Date(currentWeek);
+      date.setDate(currentWeek.getDate() - (config.week - 1 - index) * 7);
+      return formatPeriodKey(date, "week");
+    });
+  }
+
+  if (granularity === "month") {
+    return Array.from({ length: config.month }, (_, index) => {
+      const date = new Date(today.getFullYear(), today.getMonth() - (config.month - 1 - index), 1);
+      return formatPeriodKey(date, "month");
+    });
+  }
+
+  return Array.from({ length: config.year }, (_, index) => {
+    const date = new Date(today.getFullYear() - (config.year - 1 - index), 0, 1);
+    return formatPeriodKey(date, "year");
+  });
+}
+
+function buildItemsAddedSeries(data, granularity) {
+  return Object.entries(REPORT_SERIES_META).map(([key, meta]) => {
+    const counts = new Map();
+    for (const item of data?.[key] || []) {
+      const dateKey = toISODateKey(meta.accessor(item));
+      if (!dateKey) continue;
+      const periodKey = formatPeriodKey(new Date(`${dateKey}T00:00:00`), granularity);
+      counts.set(periodKey, (counts.get(periodKey) || 0) + 1);
+    }
+    return {
+      key,
+      label: meta.label,
+      color: meta.color,
+      counts,
+      total: Array.from(counts.values()).reduce((sum, count) => sum + count, 0),
+    };
+  });
+}
+
+function normalizeNicheMatch(value) {
+  return `${value || ""}`.trim().toLowerCase();
+}
+
+function deriveNichePlatform(niche, data) {
+  const nicheKeys = [
+    normalizeNicheMatch(niche?.niche),
+    normalizeNicheMatch(niche?.subNiche),
+    normalizeNicheMatch([niche?.niche, niche?.subNiche].filter(Boolean).join(" ")),
+  ].filter(Boolean);
+
+  const platformCounts = new Map();
+  const recordPlatform = (platform) => {
+    if (!platform) return;
+    const normalized = `${platform}`.trim();
+    if (!normalized) return;
+    platformCounts.set(normalized, (platformCounts.get(normalized) || 0) + 1);
+  };
+
+  for (const keyword of data?.keywords || []) {
+    const keywordKeys = [normalizeNicheMatch(keyword?.niche), normalizeNicheMatch(keyword?.subNiche)].filter(Boolean);
+    if (!keywordKeys.some((key) => nicheKeys.includes(key))) continue;
+    `${keyword?.platforms || ""}`.split(",").map((value) => value.trim()).filter(Boolean).forEach(recordPlatform);
+  }
+
+  for (const brief of data?.briefs || []) {
+    const briefKeys = [normalizeNicheMatch(brief?.niche), normalizeNicheMatch(brief?.subNiche)].filter(Boolean);
+    if (!briefKeys.some((key) => nicheKeys.includes(key))) continue;
+    recordPlatform(brief?.platform);
+  }
+
+  for (const seo of data?.seo || []) {
+    const title = normalizeNicheMatch(seo?.title);
+    if (!title || !nicheKeys.some((key) => title.includes(key))) continue;
+    recordPlatform(seo?.platform);
+  }
+
+  for (const listing of data?.inventory || []) {
+    const design = normalizeNicheMatch(listing?.design);
+    const notes = normalizeNicheMatch(listing?.notes);
+    if (!nicheKeys.some((key) => design.includes(key) || notes.includes(key))) continue;
+    recordPlatform(listing?.platform);
+  }
+
+  const sorted = Array.from(platformCounts.entries()).sort((a, b) => b[1] - a[1]);
+  return sorted[0]?.[0] || "Other";
+}
+
+function buildNicheOpportunityPoints(data) {
+  return (data?.niches || [])
+    .filter((item) => Number.isFinite(Number(item?.competition)) && Number.isFinite(Number(item?.demand)))
+    .map((item, index) => ({
+      id: `${normalizeNicheMatch(item?.niche)}-${normalizeNicheMatch(item?.subNiche)}-${index}`,
+      name: item?.subNiche || item?.niche || `Niche ${index + 1}`,
+      niche: item?.niche || "",
+      subNiche: item?.subNiche || "",
+      competition: Number(item?.competition),
+      demand: Number(item?.demand),
+      status: item?.status || "Researching",
+      platform: deriveNichePlatform(item, data),
+      score: item?.score || "",
+    }));
+}
+
+function buildPlatformDistribution(data) {
+  const platformOrder = ["Amazon Merch", "Etsy", "Redbubble", "TeeSpring/Spring"];
+  const aliasMap = {
+    Spring: "TeeSpring/Spring",
+    TeeSpring: "TeeSpring/Spring",
+    "TeeSpring/Spring": "TeeSpring/Spring",
+  };
+
+  const counts = new Map(platformOrder.map((platform) => [platform, 0]));
+  for (const item of data?.inventory || []) {
+    const normalized = aliasMap[item?.platform] || item?.platform;
+    if (!counts.has(normalized)) continue;
+    counts.set(normalized, (counts.get(normalized) || 0) + 1);
+  }
+
+  const total = Array.from(counts.values()).reduce((sum, count) => sum + count, 0);
+  return platformOrder.map((platform) => ({
+    platform,
+    label: platform === "TeeSpring/Spring" ? "Spring" : platform,
+    count: counts.get(platform) || 0,
+    share: total ? ((counts.get(platform) || 0) / total) * 100 : 0,
+    color: PLATFORM_REPORT_COLORS[platform] || PLATFORM_REPORT_COLORS.Other,
+  }));
+}
+
+function ReportsView({ data }) {
+  const [reportType, setReportType] = useState("items-added");
+  const [filter, setFilter] = useState("all");
+  const [granularity, setGranularity] = useState("day");
+  const [matrixColorBy, setMatrixColorBy] = useState("status");
+
+  const series = useMemo(() => buildItemsAddedSeries(data, granularity), [data, granularity]);
+  const visibleSeries = filter === "all" ? series : series.filter((item) => item.key === filter);
+  const dateKeys = useMemo(() => buildPeriodKeys(granularity), [granularity]);
+  const nichePoints = useMemo(() => buildNicheOpportunityPoints(data), [data]);
+  const platformDistribution = useMemo(() => buildPlatformDistribution(data), [data]);
+
+  const chartSeries = visibleSeries.map((item) => ({
+    ...item,
+    points: dateKeys.map((dateKey) => item.counts.get(dateKey) || 0),
+  }));
+
+  const maxValue = Math.max(1, ...chartSeries.flatMap((item) => item.points));
+  const width = 760;
+  const height = 280;
+  const padding = 28;
+  const innerWidth = width - padding * 2;
+  const innerHeight = height - padding * 2;
+  const matrixLegend = matrixColorBy === "status" ? NICHE_STATUS_COLORS : PLATFORM_REPORT_COLORS;
+  const matrixWidth = 760;
+  const matrixHeight = 430;
+  const matrixPadding = 44;
+  const matrixInnerWidth = matrixWidth - matrixPadding * 2;
+  const matrixInnerHeight = matrixHeight - matrixPadding * 2;
+  const platformTotal = platformDistribution.reduce((sum, item) => sum + item.count, 0);
+  const pieRadius = 104;
+  const pieCircumference = 2 * Math.PI * pieRadius;
+  const getMatrixColor = (point) =>
+    matrixColorBy === "status"
+      ? NICHE_STATUS_COLORS[point.status] || C.textMuted
+      : PLATFORM_REPORT_COLORS[point.platform] || PLATFORM_REPORT_COLORS.Other;
+
+  return (
+    <div style={{ display: "grid", gap: 16 }}>
+      <div
+        style={{
+          background: C.card,
+          border: `1px solid ${C.border}`,
+          borderRadius: 10,
+          padding: 18,
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".16em", color: C.muted }}>Listings Reports</div>
+            <h2 style={{ margin: "8px 0 4px", fontSize: 24 }}>
+              {reportType === "items-added"
+                ? "Items Added"
+                : reportType === "niche-matrix"
+                  ? "Niche Opportunity Matrix"
+                  : "Platform Distribution"}
+            </h2>
+            <div style={{ color: C.muted }}>
+              {reportType === "items-added"
+                ? "Track how many new records were added by day, week, month, or year."
+                : reportType === "niche-matrix"
+                  ? "Compare demand versus competition to spot validated and emerging niche opportunities fast."
+                  : "See where the current listings portfolio is concentrated across your core selling platforms."}
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <FormControl size="small" sx={{ minWidth: 220 }}>
+              <MuiSelect value={reportType} onChange={(event) => setReportType(event.target.value)}>
+                <MenuItem value="items-added">Items Added</MenuItem>
+                <MenuItem value="niche-matrix">Niche Opportunity Matrix</MenuItem>
+                <MenuItem value="platform-distribution">Platform Distribution</MenuItem>
+              </MuiSelect>
+            </FormControl>
+            {reportType === "items-added" && (
+              <>
+            <FormControl size="small" sx={{ minWidth: 180 }}>
+              <MuiSelect value={filter} onChange={(event) => setFilter(event.target.value)} displayEmpty>
+                <MenuItem value="all">All sources</MenuItem>
+                <MenuItem value="niches">Niches</MenuItem>
+                <MenuItem value="inventory">Listings</MenuItem>
+                <MenuItem value="keywords">Keywords</MenuItem>
+                <MenuItem value="trends">Trends</MenuItem>
+              </MuiSelect>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <MuiSelect value={granularity} onChange={(event) => setGranularity(event.target.value)}>
+                <MenuItem value="day">Day</MenuItem>
+                <MenuItem value="week">Week</MenuItem>
+                <MenuItem value="month">Month</MenuItem>
+                <MenuItem value="year">Year</MenuItem>
+              </MuiSelect>
+            </FormControl>
+              </>
+            )}
+            {reportType === "niche-matrix" && (
+              <FormControl size="small" sx={{ minWidth: 180 }}>
+                <MuiSelect value={matrixColorBy} onChange={(event) => setMatrixColorBy(event.target.value)}>
+                  <MenuItem value="status">Color by Status</MenuItem>
+                  <MenuItem value="platform">Color by Platform</MenuItem>
+                </MuiSelect>
+              </FormControl>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {reportType === "items-added" && (
+        <>
+          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
+            {visibleSeries.map((item) => (
+              <StatCard
+                key={item.key}
+                label={item.label}
+                value={item.total}
+                sub={`Items added in this ${granularity} view`}
+                color={item.color}
+              />
+            ))}
+          </div>
+
+          <div
+            style={{
+              background: C.card,
+              border: `1px solid ${C.border}`,
+              borderRadius: 10,
+              padding: 18,
+            }}
+          >
+            <div style={{ display: "grid", gap: 14 }}>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                {visibleSeries.map((item) => (
+                  <div key={item.key} style={{ display: "inline-flex", alignItems: "center", gap: 8, color: C.text, fontSize: 13 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 999, background: item.color, display: "inline-block" }} />
+                    {item.label}
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ overflowX: "auto" }}>
+                <svg viewBox={`0 0 ${width} ${height}`} style={{ width: "100%", minWidth: 640, height: "auto", display: "block" }} role="img" aria-label="Items added chart">
+                  {[0, 1, 2, 3].map((step) => {
+                    const y = padding + (innerHeight / 3) * step;
+                    const value = Math.round(maxValue - (maxValue / 3) * step);
+                    return (
+                      <g key={step}>
+                        <line x1={padding} y1={y} x2={width - padding} y2={y} stroke="rgba(148, 163, 184, 0.25)" strokeWidth="1" />
+                        <text x={padding - 8} y={y + 4} textAnchor="end" fontSize="11" fill={C.muted}>{value}</text>
+                      </g>
+                    );
+                  })}
+
+                  {chartSeries.map((item) => {
+                    const points = item.points.map((value, index) => {
+                      const x = padding + (innerWidth * index) / Math.max(dateKeys.length - 1, 1);
+                      const y = padding + innerHeight - (value / maxValue) * innerHeight;
+                      return { x, y, value };
+                    });
+                    return (
+                      <g key={item.key}>
+                        <polyline
+                          fill="none"
+                          stroke={item.color}
+                          strokeWidth="3"
+                          strokeLinejoin="round"
+                          strokeLinecap="round"
+                          points={points.map((point) => `${point.x},${point.y}`).join(" ")}
+                        />
+                        {points.map((point, index) => (
+                          <circle key={`${item.key}-${dateKeys[index]}`} cx={point.x} cy={point.y} r="3.5" fill={item.color}>
+                            <title>{`${item.label}: ${point.value} on ${dateKeys[index]}`}</title>
+                          </circle>
+                        ))}
+                      </g>
+                    );
+                  })}
+
+                  {dateKeys.map((dateKey, index) => {
+                    if (index !== 0 && index !== dateKeys.length - 1 && index !== Math.floor(dateKeys.length / 2)) {
+                      return null;
+                    }
+                    const x = padding + (innerWidth * index) / Math.max(dateKeys.length - 1, 1);
+                    return (
+                      <text key={dateKey} x={x} y={height - 6} textAnchor="middle" fontSize="11" fill={C.muted}>
+                        {formatPeriodLabel(dateKey, granularity)}
+                      </text>
+                    );
+                  })}
+                </svg>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {reportType === "niche-matrix" && (
+        <>
+          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
+            <StatCard
+              label="Goldmine"
+              value={nichePoints.filter((point) => point.demand >= 7 && point.competition <= 4).length}
+              sub="High demand, low competition"
+              color="#22c55e"
+            />
+            <StatCard
+              label="Crowded"
+              value={nichePoints.filter((point) => point.demand >= 7 && point.competition >= 7).length}
+              sub="High demand, high competition"
+              color="#ef4444"
+            />
+            <StatCard
+              label="Experimental"
+              value={nichePoints.filter((point) => point.demand <= 4 && point.competition <= 4).length}
+              sub="Low demand, low competition"
+              color="#f59e0b"
+            />
+            <StatCard
+              label="Tracked Niches"
+              value={nichePoints.length}
+              sub="Plotted in the matrix"
+              color="#3b82f6"
+            />
+          </div>
+
+          <div
+            style={{
+              background: C.card,
+              border: `1px solid ${C.border}`,
+              borderRadius: 10,
+              padding: 18,
+            }}
+          >
+            <div style={{ display: "grid", gap: 14 }}>
+              <div style={{ display: "grid", gap: 6 }}>
+                <div style={{ fontSize: 14, color: C.text, fontWeight: 700 }}>Core research visualization</div>
+                <div style={{ color: C.textDim, fontSize: 14 }}>
+                  High demand + low competition = goldmine niches. High demand + high competition = crowded. Low demand + low competition = experimental.
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                {Object.entries(matrixLegend).map(([label, color]) => (
+                  <div key={label} style={{ display: "inline-flex", alignItems: "center", gap: 8, color: C.text, fontSize: 13 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 999, background: color, display: "inline-block" }} />
+                    {label}
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ overflowX: "auto" }}>
+                <svg
+                  viewBox={`0 0 ${matrixWidth} ${matrixHeight}`}
+                  style={{ width: "100%", minWidth: 680, height: "auto", display: "block" }}
+                  role="img"
+                  aria-label="Niche opportunity matrix"
+                >
+                  {[0, 1, 2, 3, 4].map((step) => {
+                    const x = matrixPadding + (matrixInnerWidth / 4) * step;
+                    const y = matrixPadding + (matrixInnerHeight / 4) * step;
+                    return (
+                      <g key={step}>
+                        <line x1={x} y1={matrixPadding} x2={x} y2={matrixHeight - matrixPadding} stroke="rgba(148, 163, 184, 0.18)" strokeWidth="1" />
+                        <line x1={matrixPadding} y1={y} x2={matrixWidth - matrixPadding} y2={y} stroke="rgba(148, 163, 184, 0.18)" strokeWidth="1" />
+                      </g>
+                    );
+                  })}
+
+                  <rect
+                    x={matrixPadding}
+                    y={matrixPadding}
+                    width={matrixInnerWidth / 2}
+                    height={matrixInnerHeight / 2}
+                    fill="rgba(34, 197, 94, 0.08)"
+                    stroke="rgba(34, 197, 94, 0.18)"
+                  />
+                  <rect
+                    x={matrixPadding + matrixInnerWidth / 2}
+                    y={matrixPadding}
+                    width={matrixInnerWidth / 2}
+                    height={matrixInnerHeight / 2}
+                    fill="rgba(239, 68, 68, 0.08)"
+                    stroke="rgba(239, 68, 68, 0.18)"
+                  />
+                  <rect
+                    x={matrixPadding}
+                    y={matrixPadding + matrixInnerHeight / 2}
+                    width={matrixInnerWidth / 2}
+                    height={matrixInnerHeight / 2}
+                    fill="rgba(245, 158, 11, 0.08)"
+                    stroke="rgba(245, 158, 11, 0.18)"
+                  />
+
+                  {nichePoints.map((point) => {
+                    const x = matrixPadding + ((Math.max(1, Math.min(10, point.competition)) - 1) / 9) * matrixInnerWidth;
+                    const y = matrixPadding + matrixInnerHeight - ((Math.max(1, Math.min(10, point.demand)) - 1) / 9) * matrixInnerHeight;
+                    return (
+                      <g key={point.id}>
+                        <circle cx={x} cy={y} r="7" fill={getMatrixColor(point)} opacity="0.92">
+                          <title>{`${point.name} | Demand ${point.demand} | Competition ${point.competition} | ${point.status} | ${point.platform}`}</title>
+                        </circle>
+                        <text x={x + 10} y={y - 10} fontSize="11" fill={C.textDim}>
+                          {point.name}
+                        </text>
+                      </g>
+                    );
+                  })}
+
+                  {[1, 3, 5, 7, 10].map((value) => {
+                    const x = matrixPadding + ((value - 1) / 9) * matrixInnerWidth;
+                    const y = matrixPadding + matrixInnerHeight - ((value - 1) / 9) * matrixInnerHeight;
+                    return (
+                      <g key={value}>
+                        <text x={x} y={matrixHeight - 10} textAnchor="middle" fontSize="11" fill={C.muted}>{value}</text>
+                        <text x={20} y={y + 4} textAnchor="middle" fontSize="11" fill={C.muted}>{value}</text>
+                      </g>
+                    );
+                  })}
+
+                  <text x={matrixWidth / 2} y={matrixHeight - 2} textAnchor="middle" fontSize="13" fill={C.text}>
+                    Competition
+                  </text>
+                  <text
+                    x={16}
+                    y={matrixHeight / 2}
+                    textAnchor="middle"
+                    fontSize="13"
+                    fill={C.text}
+                    transform={`rotate(-90 16 ${matrixHeight / 2})`}
+                  >
+                    Demand
+                  </text>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {reportType === "platform-distribution" && (
+        <>
+          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
+            <StatCard
+              label="Total Listings"
+              value={platformTotal}
+              sub="Across tracked core platforms"
+              color="#3b82f6"
+            />
+            {platformDistribution.map((item) => (
+              <StatCard
+                key={item.platform}
+                label={item.label}
+                value={item.count}
+                sub={`${item.share.toFixed(0)}% of portfolio`}
+                color={item.color}
+              />
+            ))}
+          </div>
+
+          <div
+            style={{
+              background: C.card,
+              border: `1px solid ${C.border}`,
+              borderRadius: 10,
+              padding: 18,
+            }}
+          >
+            <div style={{ display: "grid", gap: 18, gridTemplateColumns: "minmax(260px, 340px) minmax(280px, 1fr)", alignItems: "center" }}>
+              <div style={{ display: "grid", justifyItems: "center", gap: 12 }}>
+                <svg viewBox="0 0 280 280" style={{ width: "100%", maxWidth: 280, height: "auto", display: "block" }} role="img" aria-label="Platform distribution pie chart">
+                  <circle cx="140" cy="140" r={pieRadius} fill="none" stroke="rgba(148, 163, 184, 0.18)" strokeWidth="36" />
+                  {platformDistribution.reduce((acc, item) => {
+                    const dashLength = platformTotal ? (item.count / platformTotal) * pieCircumference : 0;
+                    const segment = (
+                      <circle
+                        key={item.platform}
+                        cx="140"
+                        cy="140"
+                        r={pieRadius}
+                        fill="none"
+                        stroke={item.color}
+                        strokeWidth="36"
+                        strokeDasharray={`${dashLength} ${pieCircumference - dashLength}`}
+                        strokeDashoffset={-acc.offset}
+                        transform="rotate(-90 140 140)"
+                      >
+                        <title>{`${item.label}: ${item.count} listings (${item.share.toFixed(1)}%)`}</title>
+                      </circle>
+                    );
+                    acc.offset += dashLength;
+                    acc.nodes.push(segment);
+                    return acc;
+                  }, { offset: 0, nodes: [] }).nodes}
+                  <circle cx="140" cy="140" r="72" fill={C.card} />
+                  <text x="140" y="132" textAnchor="middle" fontSize="14" fill={C.textDim}>Portfolio</text>
+                  <text x="140" y="154" textAnchor="middle" fontSize="28" fontWeight="700" fill={C.text}>{platformTotal}</text>
+                </svg>
+                <div style={{ color: C.textDim, fontSize: 14, textAlign: "center", maxWidth: 260 }}>
+                  This view shows where the user&apos;s portfolio is concentrated today.
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gap: 12 }}>
+                {platformDistribution.map((item) => (
+                  <div
+                    key={item.platform}
+                    style={{
+                      display: "grid",
+                      gap: 8,
+                      padding: "12px 14px",
+                      border: `1px solid ${C.border}`,
+                      borderRadius: 10,
+                      background: C.surface,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 10, color: C.text }}>
+                        <span style={{ width: 12, height: 12, borderRadius: 999, background: item.color, display: "inline-block" }} />
+                        <span>{item.label}</span>
+                      </div>
+                      <div style={{ color: C.textDim, fontSize: 14 }}>{item.count} listings</div>
+                    </div>
+                    <div style={{ height: 10, borderRadius: 999, overflow: "hidden", background: "rgba(148, 163, 184, 0.12)" }}>
+                      <div style={{ width: `${item.share}%`, height: "100%", background: item.color, borderRadius: 999 }} />
+                    </div>
+                    <div style={{ color: C.textMuted, fontSize: 13 }}>{item.share.toFixed(1)}% of active portfolio concentration</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 function InventoryView({ data, addItem, deleteItem, updateItem, importItems, plan }) {
   const [form, setForm] = useState({
     sku: "",
@@ -6864,4 +7587,5 @@ function GuideView() {
     </div>
   );
 }
+
 

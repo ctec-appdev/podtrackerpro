@@ -1842,6 +1842,7 @@ export default function PODTracker() {
   const { data: session, status } = useSession();
   const [tab, setTab] = useState("dashboard");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [openNavGroups, setOpenNavGroups] = useState({ "research-group": true });
   const [data, setData] = useState(EMPTY_TRACKER_DATA);
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -1878,6 +1879,15 @@ export default function PODTracker() {
       setLoaded(true);
     })();
   }, []);
+
+  useEffect(() => {
+    const activeGroup = TABS.find((item) => item.children?.some((child) => child.id === tab));
+    if (!activeGroup) return;
+
+    setOpenNavGroups((prev) => (
+      prev[activeGroup.id] ? prev : { ...prev, [activeGroup.id]: true }
+    ));
+  }, [tab]);
 
   useEffect(() => {
     if (status !== "authenticated") {
@@ -2056,15 +2066,21 @@ export default function PODTracker() {
         {TABS.map((t) => {
           if (t.children?.length) {
             const isGroupActive = t.children.some((child) => child.id === tab);
+            const isGroupOpen = isSidebarCollapsed ? true : openNavGroups[t.id] !== false;
 
             return (
               <div key={t.id}>
-                <div
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isSidebarCollapsed) return;
+                    setOpenNavGroups((prev) => ({ ...prev, [t.id]: !isGroupOpen }));
+                  }}
                   title={isSidebarCollapsed ? t.label : undefined}
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    justifyContent: isSidebarCollapsed ? "center" : "flex-start",
+                    justifyContent: isSidebarCollapsed ? "center" : "space-between",
                     gap: 10,
                     padding: isSidebarCollapsed ? "10px 0" : "10px 20px 8px",
                     color: isGroupActive ? C.white : C.textMuted,
@@ -2072,12 +2088,23 @@ export default function PODTracker() {
                     fontSize: 13,
                     textTransform: "uppercase",
                     letterSpacing: 0.8,
+                    width: "100%",
+                    border: "none",
+                    background: "transparent",
+                    cursor: isSidebarCollapsed ? "default" : "pointer",
                   }}
                 >
-                  <span style={{ fontSize: 16, width: 18, textAlign: "center" }}>{t.icon}</span>
-                  {!isSidebarCollapsed && t.label}
-                </div>
-                {t.children.map((child) => (
+                  <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 16, width: 18, textAlign: "center" }}>{t.icon}</span>
+                    {!isSidebarCollapsed && t.label}
+                  </span>
+                  {!isSidebarCollapsed && (
+                    <span style={{ fontSize: 14, color: isGroupActive ? C.white : C.textDim }}>
+                      {isGroupOpen ? "▾" : "▸"}
+                    </span>
+                  )}
+                </button>
+                {isGroupOpen && t.children.map((child) => (
                   <button
                     key={child.id}
                     onClick={() => setTab(child.id)}

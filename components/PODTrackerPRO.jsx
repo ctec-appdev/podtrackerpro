@@ -39,6 +39,7 @@ const STORAGE = {
   briefs: "pod-dash-briefs",
   seo: "pod-dash-seo",
   ideas: "pod-dash-ideas",
+  nicheProfiles: "pod-dash-niche-profiles",
   inventory: "pod-dash-inventory",
   performance: "pod-dash-perf",
 };
@@ -50,6 +51,7 @@ const EMPTY_TRACKER_DATA = {
   briefs: [],
   seo: [],
   ideas: [],
+  nicheProfiles: [],
   inventory: [],
   performance: [],
 };
@@ -391,6 +393,10 @@ function generateIdeaId() {
   }
 
   return `idea-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function getNicheProfileId(niche) {
+  return normalizeCompareValue(niche || "");
 }
 
 // ─── CSV IMPORT / EXPORT HELPERS ───────────────
@@ -1016,6 +1022,45 @@ function Input({ value, onChange, placeholder, style: s, ...props }) {
       }}
       {...props}
     />
+  );
+}
+
+function NicheLink({ niche, subNiche = "", onOpen, children, style: s }) {
+  const label = children || (subNiche || niche);
+
+  if (!niche || !label) {
+    return label || "—";
+  }
+
+  return (
+    <span
+      role="link"
+      tabIndex={0}
+      onClick={() => onOpen?.(niche, subNiche)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen?.(niche, subNiche);
+        }
+      }}
+      style={{
+        background: "none",
+        border: "none",
+        padding: 0,
+        margin: 0,
+        color: C.accent,
+        cursor: "pointer",
+        fontFamily: "inherit",
+        fontSize: "inherit",
+        textDecoration: "underline",
+        textUnderlineOffset: 3,
+        textAlign: "left",
+        display: "inline",
+        ...s,
+      }}
+    >
+      {label}
+    </span>
   );
 }
 
@@ -1894,6 +1939,7 @@ export default function PODTracker() {
   const [tab, setTab] = useState("dashboard");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [openNavGroups, setOpenNavGroups] = useState({ "research-group": true, "design-group": true });
+  const [selectedNicheContext, setSelectedNicheContext] = useState(null);
   const [data, setData] = useState(EMPTY_TRACKER_DATA);
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -2005,6 +2051,12 @@ export default function PODTracker() {
     },
     [data, update]
   );
+
+  const openNicheHome = useCallback((niche, subNiche = "") => {
+    if (!niche) return;
+    setSelectedNicheContext({ niche, subNiche: subNiche || "" });
+    setTab("niche-home");
+  }, []);
 
   if (!loaded) {
     return (
@@ -2340,7 +2392,22 @@ export default function PODTracker() {
       </div>
 
       <main style={{ flex: 1, padding: 32, overflowY: "auto", maxHeight: "100vh" }}>
-        {tab === "dashboard" && <DashboardView data={data} setTab={setTab} plan={plan} usage={usage} />}
+        {tab === "dashboard" && <DashboardView data={data} setTab={setTab} plan={plan} usage={usage} openNicheHome={openNicheHome} />}
+        {tab === "niche-home" && (
+          <NicheHomeView
+            data={data}
+            selectedNicheContext={selectedNicheContext}
+            setSelectedNicheContext={setSelectedNicheContext}
+            openNicheHome={openNicheHome}
+            plan={plan}
+            usage={usage}
+            setUsage={setUsage}
+            loading={loading}
+            setLoading={setLoading}
+            addItem={addItem}
+            updateItem={updateItem}
+          />
+        )}
         {tab === "niches" && (
           <NichesView
             data={data}
@@ -2353,6 +2420,7 @@ export default function PODTracker() {
             plan={plan}
             usage={usage}
             setUsage={setUsage}
+            openNicheHome={openNicheHome}
           />
         )}
         {tab === "keywords" && (
@@ -2367,6 +2435,7 @@ export default function PODTracker() {
             plan={plan}
             usage={usage}
             setUsage={setUsage}
+            openNicheHome={openNicheHome}
           />
         )}
         {tab === "trends" && (
@@ -2384,13 +2453,13 @@ export default function PODTracker() {
           />
         )}
         {tab === "briefs" && (
-          <BriefsView data={data} addItem={addItem} deleteItem={deleteItem} updateItem={updateItem} loading={loading} setLoading={setLoading} plan={plan} usage={usage} setUsage={setUsage} />
+          <BriefsView data={data} addItem={addItem} deleteItem={deleteItem} updateItem={updateItem} loading={loading} setLoading={setLoading} plan={plan} usage={usage} setUsage={setUsage} openNicheHome={openNicheHome} />
         )}
         {tab === "seo" && (
-          <SEOView data={data} addItem={addItem} deleteItem={deleteItem} updateItem={updateItem} loading={loading} setLoading={setLoading} plan={plan} usage={usage} setUsage={setUsage} />
+          <SEOView data={data} addItem={addItem} deleteItem={deleteItem} updateItem={updateItem} loading={loading} setLoading={setLoading} plan={plan} usage={usage} setUsage={setUsage} openNicheHome={openNicheHome} />
         )}
         {tab === "ideas" && (
-          <IdeasView data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} />
+          <IdeasView data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} openNicheHome={openNicheHome} />
         )}
         {tab === "inventory" && (
           <InventoryView data={data} addItem={addItem} deleteItem={deleteItem} updateItem={updateItem} importItems={importItems} plan={plan} />
@@ -2404,13 +2473,14 @@ export default function PODTracker() {
 }
 
 // ─── DASHBOARD VIEW ────────────────────────────
-function DashboardView({ data, setTab, plan, usage }) {
+function DashboardView({ data, setTab, plan, usage, openNicheHome }) {
   const activeListings = data.inventory.filter((i) => i.status === "Active").length;
   const byPlatform = PLATFORMS.map((p) => ({
     platform: p,
     count: data.inventory.filter((i) => i.platform === p).length,
   }));
   const recentTrends = data.trends.slice(-5).reverse();
+  const recentNiches = data.niches.slice(-5).reverse();
   const pendingBriefs = data.briefs.filter((b) => b.status !== "Listed" && b.status !== "Rejected").length;
   const limits = PLAN_LIMITS[plan];
 
@@ -2572,6 +2642,25 @@ function DashboardView({ data, setTab, plan, usage }) {
         </div>
       </div>
 
+      <div style={{ marginTop: 24, background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: 20 }}>
+        <h3 style={{ fontSize: 19, fontFamily: font, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1, margin: "0 0 16px" }}>
+          Recent Niches
+        </h3>
+        {recentNiches.length ? recentNiches.map((item, index) => (
+          <div key={`${item.niche}-${item.subNiche}-${index}`} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: index < recentNiches.length - 1 ? `1px solid ${C.border}` : "none" }}>
+            <div>
+              <NicheLink niche={item.niche} subNiche={item.subNiche} onOpen={openNicheHome} style={{ fontSize: 18 }}>
+                {item.niche}{item.subNiche ? ` / ${item.subNiche}` : ""}
+              </NicheLink>
+              <div style={{ color: C.textMuted, fontSize: 14 }}>{item.status || "Researching"}</div>
+            </div>
+            <Badge color={Number(item.score) >= 7 ? "success" : Number(item.score) >= 5 ? "warn" : "accent"}>
+              {item.score || "—"}
+            </Badge>
+          </div>
+        )) : <div style={{ color: C.textMuted }}>No niches tracked yet.</div>}
+      </div>
+
       <div style={{ marginTop: 24, display: "flex", gap: 12 }}>
         <Btn onClick={() => setTab("research")}>✦ AI Research</Btn>
         <Btn variant="ghost" onClick={() => setTab("niches")}>
@@ -2619,7 +2708,7 @@ function DCEBBar({ label, letter, value, reason }) {
 }
 
 // ─── NICHES VIEW ───────────────────────────────
-function NichesView({ data, addItem, deleteItem, updateItem, importItems, loading, setLoading, plan, usage, setUsage }) {
+function NichesView({ data, addItem, deleteItem, updateItem, importItems, loading, setLoading, plan, usage, setUsage, openNicheHome }) {
   const [niche, setNiche] = useState("");
   const [subNiche, setSubNiche] = useState("");
   const [dcebResult, setDcebResult] = useState(null);
@@ -2821,8 +2910,17 @@ Return JSON array: [{"subNiche":"...","demand":1-10,"demandReason":"short","comp
                 DCEB Analysis
               </div>
               <h2 style={{ fontSize: 23, fontWeight: 700, margin: 0, color: C.white }}>
-                {dcebResult.niche}
-                {dcebResult.subNiche && dcebResult.subNiche !== "General" ? ` › ${dcebResult.subNiche}` : ""}
+                <NicheLink niche={dcebResult.niche} onOpen={openNicheHome} style={{ fontSize: 23, fontWeight: 700 }}>
+                  {dcebResult.niche}
+                </NicheLink>
+                {dcebResult.subNiche && dcebResult.subNiche !== "General" ? (
+                  <>
+                    {" "}›{" "}
+                    <NicheLink niche={dcebResult.niche} subNiche={dcebResult.subNiche} onOpen={openNicheHome} style={{ fontSize: 23, fontWeight: 700 }}>
+                      {dcebResult.subNiche}
+                    </NicheLink>
+                  </>
+                ) : ""}
               </h2>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -2897,7 +2995,7 @@ Return JSON array: [{"subNiche":"...","demand":1-10,"demandReason":"short","comp
               marginBottom: 16,
             }}
           >
-            ◎ Sub-Niches for &quot;{niche}&quot;
+            ◎ Sub-Niches for <NicheLink niche={niche} onOpen={openNicheHome}>&quot;{niche}&quot;</NicheLink>
           </div>
           {subNicheResults.map((n, i) => {
             const compositeScore = ((n.demand + n.evergreen + n.brandability + (10 - n.competition)) / 4).toFixed(1);
@@ -2911,7 +3009,9 @@ Return JSON array: [{"subNiche":"...","demand":1-10,"demandReason":"short","comp
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <span style={{ color: C.white, fontWeight: 700, fontSize: 17 }}>{n.subNiche}</span>
+                    <NicheLink niche={niche} subNiche={n.subNiche} onOpen={openNicheHome} style={{ color: C.white, fontWeight: 700, fontSize: 17 }}>
+                      {n.subNiche}
+                    </NicheLink>
                     <Badge color={verdictColor(n.verdict)}>{n.verdict}</Badge>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -2955,8 +3055,16 @@ Return JSON array: [{"subNiche":"...","demand":1-10,"demandReason":"short","comp
 
       <Table
         columns={[
-          { key: "niche", label: "Niche" },
-          { key: "subNiche", label: "Sub-Niche" },
+          {
+            key: "niche",
+            label: "Niche",
+            render: (v, row) => <NicheLink niche={row.niche} onOpen={openNicheHome}>{v}</NicheLink>,
+          },
+          {
+            key: "subNiche",
+            label: "Sub-Niche",
+            render: (v, row) => <NicheLink niche={row.niche} subNiche={v} onOpen={openNicheHome}>{v || "General"}</NicheLink>,
+          },
           {
             key: "score",
             label: "Score",
@@ -2986,7 +3094,7 @@ Return JSON array: [{"subNiche":"...","demand":1-10,"demandReason":"short","comp
 }
 
 // ─── KEYWORDS VIEW ─────────────────────────────
-function KeywordsView({ data, addItem, deleteItem, updateItem, importItems, loading, setLoading, plan, usage, setUsage }) {
+function KeywordsView({ data, addItem, deleteItem, updateItem, importItems, loading, setLoading, plan, usage, setUsage, openNicheHome }) {
   const [form, setForm] = useState({
     keyword: "",
     niche: "",
@@ -3167,7 +3275,11 @@ function KeywordsView({ data, addItem, deleteItem, updateItem, importItems, load
       <Table
         columns={[
           { key: "keyword", label: "Keyword" },
-          { key: "niche", label: "Niche" },
+          {
+            key: "niche",
+            label: "Niche",
+            render: (v, row) => <NicheLink niche={row.niche} subNiche={row.subNiche} onOpen={openNicheHome}>{v}</NicheLink>,
+          },
           {
             key: "volume",
             label: "Volume",
@@ -3384,7 +3496,7 @@ function TrendsView({ data, addItem, deleteItem, updateItem, importItems, loadin
 }
 
 // ─── DESIGN BRIEFS VIEW ────────────────────────
-function BriefsView({ data, addItem, deleteItem, updateItem, loading, setLoading, plan, usage, setUsage }) {
+function BriefsView({ data, addItem, deleteItem, updateItem, loading, setLoading, plan, usage, setUsage, openNicheHome }) {
   const [form, setForm] = useState({
     niche: "",
     subNiche: "",
@@ -3530,7 +3642,11 @@ function BriefsView({ data, addItem, deleteItem, updateItem, loading, setLoading
       <Table
         columns={[
           { key: "id", label: "ID" },
-          { key: "niche", label: "Niche" },
+          {
+            key: "niche",
+            label: "Niche",
+            render: (v, row) => <NicheLink niche={row.niche} subNiche={row.subNiche} onOpen={openNicheHome}>{v}</NicheLink>,
+          },
           { key: "slogan", label: "Slogan" },
           { key: "style", label: "Style" },
           { key: "platform", label: "Platform", filterable: true },
@@ -3554,7 +3670,7 @@ function BriefsView({ data, addItem, deleteItem, updateItem, loading, setLoading
 }
 
 // ─── SEO VIEW ──────────────────────────────────
-function SEOView({ data, addItem, deleteItem, updateItem, loading, setLoading, plan, usage, setUsage }) {
+function SEOView({ data, addItem, deleteItem, updateItem, loading, setLoading, plan, usage, setUsage, openNicheHome }) {
   const [designId, setDesignId] = useState("");
   const [platform, setPlatform] = useState("Amazon Merch");
   const [generated, setGenerated] = useState(null);
@@ -3620,7 +3736,7 @@ function SEOView({ data, addItem, deleteItem, updateItem, loading, setLoading, p
         </div>
         {brief && (
           <div style={{ fontSize: 15, color: C.textDim, fontFamily: font }}>
-            {brief.id}: &quot;{brief.slogan}&quot; · {brief.niche} · {brief.style}
+            {brief.id}: &quot;{brief.slogan}&quot; · <NicheLink niche={brief.niche} subNiche={brief.subNiche} onOpen={openNicheHome}>{brief.niche}</NicheLink> · {brief.style}
           </div>
         )}
       </div>
@@ -4409,7 +4525,7 @@ function ResearchView({ data, loading, setLoading, plan, usage, setUsage }) {
 }
 
 // ─── IDEAS VIEW ────────────────────────────────
-function IdeasView({ data, addItem, updateItem, deleteItem }) {
+function IdeasView({ data, addItem, updateItem, deleteItem, openNicheHome }) {
   const ideas = Array.isArray(data.ideas) ? data.ideas : [];
   const [quickTitle, setQuickTitle] = useState("");
   const [activeIdeaId, setActiveIdeaId] = useState(null);
@@ -4717,7 +4833,11 @@ function IdeasView({ data, addItem, updateItem, deleteItem }) {
                         <span style={{ color: C.textMuted, fontSize: 12 }}>⋮⋮</span>
                       </div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-                        {idea.niche && <Badge>{idea.niche}</Badge>}
+                        {idea.niche && (
+                          <NicheLink niche={idea.niche} onOpen={openNicheHome} style={{ textDecoration: "none" }}>
+                            <Badge>{idea.niche}</Badge>
+                          </NicheLink>
+                        )}
                         {idea.trend && <Badge color="warn">{idea.trend}</Badge>}
                       </div>
                       {!!idea.keywords?.length && (
@@ -4931,6 +5051,431 @@ function IdeasView({ data, addItem, updateItem, deleteItem }) {
           </aside>
         </>
       )}
+    </div>
+  );
+}
+
+// ─── NICHE HOME VIEW ───────────────────────────
+function NicheHomeView({
+  data,
+  selectedNicheContext,
+  setSelectedNicheContext,
+  openNicheHome,
+  plan,
+  usage,
+  setUsage,
+  loading,
+  setLoading,
+  addItem,
+  updateItem,
+}) {
+  const niche = selectedNicheContext?.niche || "";
+  const subNiche = selectedNicheContext?.subNiche || "";
+  const notesRef = useRef(null);
+  const [profileDraft, setProfileDraft] = useState(null);
+  const [savedBanner, setSavedBanner] = useState(false);
+  const limits = PLAN_LIMITS[plan];
+  const nicheKey = getNicheProfileId(niche);
+
+  const relatedNiches = useMemo(
+    () => (data.niches || []).filter((item) => normalizeCompareValue(item.niche) === nicheKey),
+    [data.niches, nicheKey]
+  );
+  const relatedKeywords = useMemo(
+    () =>
+      (data.keywords || []).filter((item) => {
+        if (normalizeCompareValue(item.niche) !== nicheKey) return false;
+        return !subNiche || normalizeCompareValue(item.subNiche) === normalizeCompareValue(subNiche);
+      }),
+    [data.keywords, nicheKey, subNiche]
+  );
+  const relatedBriefs = useMemo(
+    () =>
+      (data.briefs || []).filter((item) => {
+        if (normalizeCompareValue(item.niche) !== nicheKey) return false;
+        return !subNiche || normalizeCompareValue(item.subNiche) === normalizeCompareValue(subNiche);
+      }),
+    [data.briefs, nicheKey, subNiche]
+  );
+  const relatedIdeas = useMemo(
+    () =>
+      (data.ideas || []).filter((item) => normalizeCompareValue(item.niche) === nicheKey),
+    [data.ideas, nicheKey]
+  );
+  const briefIdSet = useMemo(
+    () => new Set(relatedBriefs.map((item) => item.id).filter(Boolean)),
+    [relatedBriefs]
+  );
+  const relatedListings = useMemo(
+    () =>
+      (data.inventory || []).filter((item) => {
+        if (briefIdSet.has(item.briefId)) return true;
+        if (!subNiche) return false;
+        return normalizeCompareValue(item.design).includes(normalizeCompareValue(subNiche));
+      }),
+    [data.inventory, briefIdSet, subNiche]
+  );
+  const profileIndex = useMemo(
+    () => (data.nicheProfiles || []).findIndex((item) => getNicheProfileId(item?.niche) === nicheKey),
+    [data.nicheProfiles, nicheKey]
+  );
+  const profile = profileIndex >= 0 ? data.nicheProfiles[profileIndex] : null;
+  const subNicheOptions = useMemo(
+    () =>
+      Array.from(new Set(relatedNiches.map((item) => item.subNiche || "General").filter(Boolean))).sort(),
+    [relatedNiches]
+  );
+  const focusNiches = useMemo(
+    () =>
+      subNiche
+        ? relatedNiches.filter((item) => normalizeCompareValue(item.subNiche) === normalizeCompareValue(subNiche))
+        : relatedNiches,
+    [relatedNiches, subNiche]
+  );
+  const avgScore = useMemo(() => {
+    const scores = focusNiches.map((item) => Number(item.score)).filter((value) => !Number.isNaN(value));
+    if (!scores.length) return "—";
+    return (scores.reduce((sum, value) => sum + value, 0) / scores.length).toFixed(1);
+  }, [focusNiches]);
+
+  useEffect(() => {
+    if (!niche) return;
+    setProfileDraft({
+      niche,
+      notesHtml: profile?.notesHtml || "<p></p>",
+      aiResearch: profile?.aiResearch || null,
+      updatedAt: profile?.updatedAt || "",
+    });
+  }, [niche, profile]);
+
+  useEffect(() => {
+    if (!profileDraft || !notesRef.current) return;
+    const nextHtml = profileDraft.notesHtml || "<p></p>";
+    if (notesRef.current.innerHTML !== nextHtml) {
+      notesRef.current.innerHTML = nextHtml;
+    }
+  }, [profileDraft]);
+
+  useEffect(() => {
+    if (!savedBanner) return undefined;
+    const timeoutId = window.setTimeout(() => setSavedBanner(false), 1800);
+    return () => window.clearTimeout(timeoutId);
+  }, [savedBanner]);
+
+  const saveProfile = useCallback(
+    async (updates = {}) => {
+      if (!niche) return;
+      const nextProfile = {
+        niche,
+        notesHtml: notesRef.current?.innerHTML || profileDraft?.notesHtml || "<p></p>",
+        aiResearch: profileDraft?.aiResearch || null,
+        updatedAt: new Date().toISOString(),
+        ...updates,
+      };
+
+      if (profileIndex >= 0) {
+        await updateItem("nicheProfiles", profileIndex, nextProfile);
+      } else {
+        await addItem("nicheProfiles", nextProfile);
+      }
+
+      setProfileDraft(nextProfile);
+      setSavedBanner(true);
+    },
+    [addItem, niche, profileDraft, profileIndex, updateItem]
+  );
+
+  const runNicheResearch = async () => {
+    if (!niche) return;
+    const featureKey = plan === "business" ? "research" : "dceb";
+    if (plan === "free") return;
+
+    if (featureKey === "research") {
+      const allowed = await checkAndConsumeUsage("research", plan, usage, setUsage);
+      if (!allowed) {
+        alert(`AI Research limit reached (${limits.research}/day). Resets at midnight.`);
+        return;
+      }
+    } else {
+      const allowed = await checkAndConsumeUsage("dceb", plan, usage, setUsage);
+      if (!allowed) {
+        alert(`DCEB limit reached (${limits.dceb}/day). Resets at midnight.`);
+        return;
+      }
+    }
+
+    setLoading(true);
+    const result = await askClaudeJSON(
+      `Build a niche research dashboard summary for the Print on Demand niche "${niche}"${subNiche ? ` with a focus on sub-niche "${subNiche}"` : ""}.
+
+Return JSON:
+{
+  "overview":"2-3 sentence summary",
+  "audience":"who buys in this niche",
+  "opportunities":["...","...","..."],
+  "risks":["...","..."],
+  "suggestedSubNiches":["...","...","..."],
+  "suggestedKeywords":["...","...","..."],
+  "nextActions":["...","...","..."]
+}`,
+      "You are a Print on Demand niche strategist. Be specific, practical, and concise.",
+      featureKey
+    );
+    setLoading(false);
+
+    if (!result) {
+      alert("Could not generate niche research right now.");
+      return;
+    }
+
+    await saveProfile({ aiResearch: result });
+  };
+
+  const applyFormat = (command) => {
+    if (!notesRef.current) return;
+    notesRef.current.focus();
+    document.execCommand(command, false);
+  };
+
+  if (!niche) {
+    return (
+      <div>
+        <h1 style={{ fontSize: 27, fontWeight: 700, margin: "0 0 8px" }}>Niche Home</h1>
+        <p style={{ color: C.textDim, fontSize: 18, margin: 0, fontFamily: font }}>
+          Open a niche from the tracker to see its dashboard, related records, and notes.
+        </p>
+      </div>
+    );
+  }
+
+  const focusTitle = subNiche ? `${niche} / ${subNiche}` : niche;
+  const primaryNicheRecord = focusNiches[0] || relatedNiches[0] || null;
+
+  return (
+    <div>
+      {savedBanner && (
+        <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 8, background: C.successDim, color: C.success, fontFamily: font, fontSize: 14 }}>
+          Niche profile saved.
+        </div>
+      )}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 24 }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+            <Badge color="accent">Niche Home</Badge>
+            {subNiche && <Badge color="warn">Focused on {subNiche}</Badge>}
+          </div>
+          <h1 style={{ fontSize: 30, fontWeight: 700, margin: "0 0 6px", fontFamily: sansFont }}>{focusTitle}</h1>
+          <p style={{ color: C.textDim, fontSize: 17, margin: 0, fontFamily: font }}>
+            A patient-chart style dashboard for this niche, with related sub-niches, briefs, listings, and notes.
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {plan === "free" ? (
+            <LockedBtn tooltip="Upgrade to Starter or Business to run AI niche research.">✦ AI Niche Research</LockedBtn>
+          ) : (
+            <Btn onClick={runNicheResearch} disabled={loading}>
+              ✦ AI Niche Research
+            </Btn>
+          )}
+          <Btn variant="ghost" onClick={() => setSelectedNicheContext({ niche, subNiche: "" })}>
+            Reset Focus
+          </Btn>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 24 }}>
+        <StatCard label="Sub-Niches" value={subNicheOptions.length} sub="tracked under this niche" />
+        <StatCard label="Keywords" value={relatedKeywords.length} sub="linked research terms" color={C.warn} />
+        <StatCard label="Briefs" value={relatedBriefs.length} sub="design concepts" color="#8b5cf6" />
+        <StatCard label="Listings" value={relatedListings.length} sub="live or tracked" color={C.success} />
+        <StatCard label="Avg DCEB" value={avgScore} sub="for tracked niche rows" color={C.accent} />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 24, marginBottom: 24 }}>
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 20 }}>
+          <div style={{ fontFamily: font, fontSize: 14, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14 }}>
+            Niche Snapshot
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 14 }}>
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14 }}>
+              <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 6, fontFamily: font }}>Current Status</div>
+              <div style={{ color: C.white, fontSize: 18, fontWeight: 700 }}>{primaryNicheRecord?.status || "Researching"}</div>
+            </div>
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14 }}>
+              <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 6, fontFamily: font }}>Latest Score</div>
+              <div style={{ color: C.white, fontSize: 18, fontWeight: 700 }}>{primaryNicheRecord?.score || "—"}</div>
+            </div>
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14 }}>
+              <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 6, fontFamily: font }}>Top Keyword</div>
+              <div style={{ color: C.white, fontSize: 18, fontWeight: 700 }}>{relatedKeywords[0]?.keyword || "—"}</div>
+            </div>
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14 }}>
+              <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 6, fontFamily: font }}>Latest Brief</div>
+              <div style={{ color: C.white, fontSize: 18, fontWeight: 700 }}>{relatedBriefs[0]?.id || "—"}</div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 18 }}>
+            <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 10, fontFamily: font, textTransform: "uppercase", letterSpacing: 1 }}>
+              Sub-Niche Lineup
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {subNicheOptions.length ? (
+                subNicheOptions.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => openNicheHome(niche, option === "General" ? "" : option)}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 999,
+                      border: `1px solid ${normalizeCompareValue(subNiche) === normalizeCompareValue(option === "General" ? "" : option) ? C.accent : C.border}`,
+                      background: normalizeCompareValue(subNiche) === normalizeCompareValue(option === "General" ? "" : option) ? C.accentGlow : C.surface,
+                      color: normalizeCompareValue(subNiche) === normalizeCompareValue(option === "General" ? "" : option) ? C.accent : C.text,
+                      cursor: "pointer",
+                      fontFamily: font,
+                    }}
+                  >
+                    {option}
+                  </button>
+                ))
+              ) : (
+                <div style={{ color: C.textMuted }}>No sub-niches tracked yet.</div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 20 }}>
+          <div style={{ fontFamily: font, fontSize: 14, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14 }}>
+            AI Research Snapshot
+          </div>
+          {profileDraft?.aiResearch ? (
+            <div style={{ display: "grid", gap: 14 }}>
+              <div style={{ color: C.text, lineHeight: 1.7 }}>{profileDraft.aiResearch.overview}</div>
+              <div>
+                <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 6, fontFamily: font }}>Audience</div>
+                <div style={{ color: C.white }}>{profileDraft.aiResearch.audience}</div>
+              </div>
+              {profileDraft.aiResearch.opportunities?.length > 0 && (
+                <div>
+                  <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 6, fontFamily: font }}>Opportunities</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {profileDraft.aiResearch.opportunities.map((item, index) => (
+                      <Badge key={index} color="success">{item}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {profileDraft.aiResearch.suggestedKeywords?.length > 0 && (
+                <div>
+                  <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 6, fontFamily: font }}>Suggested Keywords</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {profileDraft.aiResearch.suggestedKeywords.map((item, index) => (
+                      <Badge key={index}>{item}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ color: C.textMuted, lineHeight: 1.7 }}>
+              Run AI niche research to generate a strategic snapshot, opportunity set, and next steps for this niche.
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 24 }}>
+        <div style={{ display: "grid", gap: 24 }}>
+          <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 20 }}>
+            <div style={{ fontFamily: font, fontSize: 14, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14 }}>
+              Related Work
+            </div>
+            <div style={{ display: "grid", gap: 12 }}>
+              <div style={{ background: C.surface, borderRadius: 10, padding: 14 }}>
+                <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 8, fontFamily: font }}>Keywords</div>
+                {relatedKeywords.length ? relatedKeywords.slice(0, 6).map((item, index) => (
+                  <div key={index} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "6px 0", borderBottom: index < Math.min(relatedKeywords.length, 6) - 1 ? `1px solid ${C.border}` : "none" }}>
+                    <div style={{ color: C.white }}>{item.keyword}</div>
+                    <div style={{ color: C.textMuted }}>{item.volume || "—"}</div>
+                  </div>
+                )) : <div style={{ color: C.textMuted }}>No keywords linked yet.</div>}
+              </div>
+              <div style={{ background: C.surface, borderRadius: 10, padding: 14 }}>
+                <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 8, fontFamily: font }}>Design Briefs</div>
+                {relatedBriefs.length ? relatedBriefs.slice(0, 5).map((item, index) => (
+                  <div key={index} style={{ padding: "6px 0", borderBottom: index < Math.min(relatedBriefs.length, 5) - 1 ? `1px solid ${C.border}` : "none" }}>
+                    <div style={{ color: C.white, fontWeight: 700 }}>{item.id}</div>
+                    <div style={{ color: C.textDim, fontSize: 14 }}>{item.slogan || item.concept}</div>
+                  </div>
+                )) : <div style={{ color: C.textMuted }}>No briefs linked yet.</div>}
+              </div>
+              <div style={{ background: C.surface, borderRadius: 10, padding: 14 }}>
+                <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 8, fontFamily: font }}>Listings</div>
+                {relatedListings.length ? relatedListings.slice(0, 5).map((item, index) => (
+                  <div key={index} style={{ padding: "6px 0", borderBottom: index < Math.min(relatedListings.length, 5) - 1 ? `1px solid ${C.border}` : "none" }}>
+                    <div style={{ color: C.white, fontWeight: 700 }}>{item.design || item.sku}</div>
+                    <div style={{ color: C.textDim, fontSize: 14 }}>{item.platform} · {item.status}</div>
+                  </div>
+                )) : <div style={{ color: C.textMuted }}>No linked listings yet.</div>}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 20 }}>
+            <div style={{ fontFamily: font, fontSize: 14, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14 }}>
+              Ideas Queue
+            </div>
+            {relatedIdeas.length ? relatedIdeas.slice(0, 6).map((idea, index) => (
+              <div key={idea.id || index} style={{ padding: "8px 0", borderBottom: index < Math.min(relatedIdeas.length, 6) - 1 ? `1px solid ${C.border}` : "none" }}>
+                <div style={{ color: C.white, fontWeight: 700 }}>{idea.title}</div>
+                <div style={{ color: C.textDim, fontSize: 14 }}>{idea.status || "backlog"}</div>
+              </div>
+            )) : <div style={{ color: C.textMuted }}>No ideas tied to this niche yet.</div>}
+          </div>
+        </div>
+
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <div style={{ fontFamily: font, fontSize: 14, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>
+              Notes
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Btn variant="ghost" onClick={() => applyFormat("bold")} style={{ fontSize: 13, padding: "6px 10px" }}>Bold</Btn>
+              <Btn variant="ghost" onClick={() => applyFormat("italic")} style={{ fontSize: 13, padding: "6px 10px" }}>Italic</Btn>
+              <Btn variant="ghost" onClick={() => applyFormat("insertUnorderedList")} style={{ fontSize: 13, padding: "6px 10px" }}>Bullets</Btn>
+            </div>
+          </div>
+          <div
+            ref={notesRef}
+            contentEditable
+            suppressContentEditableWarning
+            onInput={(event) => {
+              const notesHtml = event.currentTarget?.innerHTML || "<p></p>";
+              setProfileDraft((prev) => ({ ...(prev || {}), niche, notesHtml }));
+            }}
+            style={{
+              minHeight: 320,
+              background: C.surface,
+              border: `1px solid ${C.border}`,
+              borderRadius: 10,
+              padding: 14,
+              color: C.text,
+              fontFamily: sansFont,
+              fontSize: 15,
+              lineHeight: 1.6,
+              outline: "none",
+            }}
+          />
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginTop: 12 }}>
+            <div style={{ color: C.textMuted, fontSize: 13 }}>
+              Use this as the chart note for the niche: observations, blockers, ideas, and follow-up tasks.
+            </div>
+            <Btn onClick={() => saveProfile()}>Save Notes</Btn>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

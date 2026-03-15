@@ -1227,7 +1227,63 @@ function StatCard({ label, value, sub, color = C.accent }) {
   );
 }
 
-function Btn({ children, onClick, variant = "primary", disabled, style: s }) {
+function AiButtonLoader() {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+      }}
+    >
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+        }}
+      >
+        {[0, 1, 2].map((index) => (
+          <span
+            key={index}
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: 999,
+              background: "#fff",
+              opacity: 0.95,
+              animation: `aiLoaderPulse 1.1s ${index * 0.18}s ease-in-out infinite`,
+              boxShadow: "0 0 12px rgba(255,255,255,0.45)",
+            }}
+          />
+        ))}
+      </span>
+      <span
+        style={{
+          width: 14,
+          height: 14,
+          borderRadius: 999,
+          border: "2px solid rgba(255,255,255,0.28)",
+          borderTopColor: "#fff",
+          animation: "aiLoaderSpin 0.9s linear infinite",
+          display: "inline-block",
+        }}
+      />
+      <style>{`
+        @keyframes aiLoaderPulse {
+          0%, 80%, 100% { transform: translateY(0) scale(0.9); opacity: 0.45; }
+          40% { transform: translateY(-2px) scale(1.15); opacity: 1; }
+        }
+        @keyframes aiLoaderSpin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+    </span>
+  );
+}
+
+function Btn({ children, onClick, variant = "primary", disabled, loading = false, loadingLabel = "Working...", style: s }) {
   const variantMap = {
     primary: "contained",
     ghost: "outlined",
@@ -1239,10 +1295,11 @@ function Btn({ children, onClick, variant = "primary", disabled, style: s }) {
     primary: {
       background: "linear-gradient(180deg, #3b82f6 0%, #3b82f6 72%, #1d4ed8 100%)",
       border: "1px solid #60a5fa",
-      color: C.white,
+      color: `${C.white} !important`,
       "&:hover": {
         background: "linear-gradient(180deg, #60a5fa 0%, #3b82f6 68%, #1e40af 100%)",
         borderColor: "#93c5fd",
+        color: `${C.white} !important`,
       },
     },
     ghost: {
@@ -1272,7 +1329,7 @@ function Btn({ children, onClick, variant = "primary", disabled, style: s }) {
       disableElevation
       variant={variantMap[variant] || "contained"}
       onClick={onClick}
-      disabled={disabled}
+      disabled={disabled || loading}
       sx={{
         textTransform: "none",
         borderRadius: "6px",
@@ -1285,6 +1342,7 @@ function Btn({ children, onClick, variant = "primary", disabled, style: s }) {
         letterSpacing: "0.3px",
         lineHeight: 1.2,
         boxShadow: "none",
+        color: variant === "ghost" ? undefined : `${C.white} !important`,
         "&.Mui-disabled": {
           color: "#94a3b8",
           borderColor: "#64748b",
@@ -1295,7 +1353,14 @@ function Btn({ children, onClick, variant = "primary", disabled, style: s }) {
         ...s,
       }}
     >
-      {children}
+      {loading ? (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+          <AiButtonLoader />
+          <span>{loadingLabel}</span>
+        </span>
+      ) : (
+        children
+      )}
     </Button>
   );
 }
@@ -3503,7 +3568,7 @@ Return JSON array: [{"subNiche":"...","demand":1-10,"demandReason":"short","comp
             + Add Niche
           </Btn>
           {limits.dceb > 0 ? (
-            <Btn onClick={dcebScore} disabled={!niche.trim() || loading} style={{ padding: "10px 20px", fontSize: 19 }}>
+            <Btn onClick={dcebScore} disabled={!niche.trim()} loading={loading} loadingLabel="Scoring niche..." style={{ padding: "10px 20px", fontSize: 19 }}>
               ✦ DCEB Auto-Score <UsageBadge used={usage.dceb || 0} limit={limits.dceb} />
             </Btn>
           ) : (
@@ -3513,7 +3578,9 @@ Return JSON array: [{"subNiche":"...","demand":1-10,"demandReason":"short","comp
             <Btn
               variant="ghost"
               onClick={exploreSubNiches}
-              disabled={!niche.trim() || loading}
+              disabled={!niche.trim()}
+              loading={loading}
+              loadingLabel="Exploring sub-niches..."
               style={{ padding: "10px 20px", fontSize: 19 }}
             >
               ◎ Explore Sub-Niches
@@ -3834,7 +3901,7 @@ function KeywordsView({ data, addItem, deleteItem, updateItem, importItems, load
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <Btn onClick={handleAdd} disabled={atKeywordCap}>+ Add Keyword</Btn>
           {limits.keywordAI > 0 ? (
-            <Btn variant="ghost" onClick={aiResearch} disabled={(!form.niche && !form.keyword) || loading}>
+            <Btn variant="ghost" onClick={aiResearch} disabled={!form.niche && !form.keyword} loading={loading} loadingLabel="Finding keywords...">
               ✦ AI Keyword Research <UsageBadge used={usage.keywordAI || 0} limit={limits.keywordAI} />
             </Btn>
           ) : (
@@ -4041,7 +4108,7 @@ function TrendsView({ data, addItem, deleteItem, updateItem, importItems, loadin
           </label>
           <Btn onClick={handleAdd}>+ Add Trend</Btn>
           {limits.trendScan > 0 ? (
-            <Btn variant="ghost" onClick={aiScan} disabled={loading}>
+            <Btn variant="ghost" onClick={aiScan} loading={loading} loadingLabel="Scanning trends...">
               ✦ AI Trend Scan <UsageBadge used={usage.trendScan || 0} limit={limits.trendScan} />
             </Btn>
           ) : (
@@ -4234,7 +4301,7 @@ function BriefsView({ data, addItem, deleteItem, updateItem, loading, setLoading
         <div style={{ display: "flex", gap: 12 }}>
           <Btn onClick={handleAdd}>+ Add Brief</Btn>
           {limits.briefs > 0 ? (
-            <Btn variant="ghost" onClick={aiGenerate} disabled={!form.niche || loading}>
+            <Btn variant="ghost" onClick={aiGenerate} disabled={!form.niche} loading={loading} loadingLabel="Drafting briefs...">
               ✦ AI Generate Briefs <UsageBadge used={usage.briefs || 0} limit={limits.briefs} />
             </Btn>
           ) : (
@@ -4389,7 +4456,7 @@ function SEOView({ data, addItem, deleteItem, updateItem, loading, setLoading, p
           />
           <Select value={platform} onChange={setPlatform} options={PLATFORMS} style={{ width: 200 }} />
           {limits.seo > 0 ? (
-            <Btn onClick={generate} disabled={!designId || loading}>
+            <Btn onClick={generate} disabled={!designId} loading={loading} loadingLabel="Generating copy...">
               ✦ Generate SEO Copy <UsageBadge used={usage.seo || 0} limit={limits.seo} />
             </Btn>
           ) : (
@@ -5038,87 +5105,6 @@ function DatesView({ data, setTab, update }) {
           gap: 14,
         }}
       >
-        <div style={{ display: "grid", gap: 6 }}>
-          <h2 style={{ margin: 0, fontSize: 22 }}>Add Custom Date</h2>
-          <div style={{ color: C.textDim, fontSize: 14 }}>
-            Add your own seasonal launch dates, niche anniversaries, or promo windows.
-          </div>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 150px 1.2fr", gap: 12 }}>
-          <Select
-            value={customForm.month}
-            onChange={(value) => setCustomForm((prev) => ({ ...prev, month: value }))}
-            options={Object.keys(MONTH_TO_INDEX)}
-          />
-          <Input
-            value={customForm.rawDay}
-            onChange={(value) => setCustomForm((prev) => ({ ...prev, rawDay: value }))}
-            placeholder="Day"
-          />
-          <Select
-            value={customForm.type}
-            onChange={(value) => setCustomForm((prev) => ({ ...prev, type: value }))}
-            options={["holiday", "niche"]}
-          />
-          <Input
-            value={customForm.event}
-            onChange={(value) => setCustomForm((prev) => ({ ...prev, event: value }))}
-            placeholder="Event name"
-          />
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 12, alignItems: "start" }}>
-          <Select
-            value={customForm.niche}
-            onChange={(value) => setCustomForm((prev) => ({ ...prev, niche: value }))}
-            options={nicheOptions}
-            placeholder="Related niche"
-          />
-          <Input
-            value={customForm.ideas}
-            onChange={(value) => setCustomForm((prev) => ({ ...prev, ideas: value }))}
-            placeholder="POD design ideas"
-          />
-          <Btn onClick={addCustomDate}>+ Add Custom Date</Btn>
-        </div>
-        {(data?.customDates || []).length > 0 && (
-          <div style={{ display: "grid", gap: 10 }}>
-            <div style={{ fontSize: 14, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>
-              Your Custom Dates
-            </div>
-            <Table
-              columns={[
-                { key: "month", label: "Month" },
-                { key: "rawDay", label: "Date" },
-                { key: "niche", label: "Niche", maxW: 180 },
-                {
-                  key: "type",
-                  label: "Type",
-                  render: (value) => (
-                    <Badge color={value === "holiday" ? "warn" : "accent"}>
-                      {value === "holiday" ? "Holiday" : "Niche Day"}
-                    </Badge>
-                  ),
-                },
-                { key: "event", label: "Event", maxW: 240 },
-                { key: "ideas", label: "Ideas", maxW: 260 },
-              ]}
-              data={data.customDates}
-              onDelete={(index) => deleteCustomDate(index)}
-            />
-          </div>
-        )}
-      </div>
-
-      <div
-        style={{
-          background: C.card,
-          border: `1px solid ${C.border}`,
-          borderRadius: 10,
-          padding: 18,
-          display: "grid",
-          gap: 14,
-        }}
-      >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
           <div style={{ display: "grid", gap: 6 }}>
             <h2 style={{ margin: 0, fontSize: 22 }}>Upcoming Call-Out Dates</h2>
@@ -5154,7 +5140,26 @@ function DatesView({ data, setTab, update }) {
               );
             })}
             <FormControl size="small" sx={{ minWidth: 220 }}>
-              <MuiSelect value={nicheFilter} onChange={(event) => setNicheFilter(event.target.value)}>
+              <MuiSelect
+                value={nicheFilter}
+                onChange={(event) => setNicheFilter(event.target.value)}
+                sx={{
+                  color: "#cbd5e1",
+                  backgroundColor: C.surface,
+                  "& .MuiOutlinedInput-notchedOutline": {
+                    borderColor: "#64748b",
+                  },
+                  "&:hover .MuiOutlinedInput-notchedOutline": {
+                    borderColor: "#94a3b8",
+                  },
+                  "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
+                    borderColor: "#94a3b8",
+                  },
+                  "& .MuiSvgIcon-root": {
+                    color: "#94a3b8",
+                  },
+                }}
+              >
                 <MenuItem value="all">All niches</MenuItem>
                 {nicheOptions.map((option) => (
                   <MenuItem key={option} value={option}>
@@ -5353,6 +5358,87 @@ function DatesView({ data, setTab, update }) {
           ]}
           data={filteredRows}
         />
+      </div>
+
+      <div
+        style={{
+          background: C.card,
+          border: `1px solid ${C.border}`,
+          borderRadius: 10,
+          padding: 18,
+          display: "grid",
+          gap: 14,
+        }}
+      >
+        <div style={{ display: "grid", gap: 6 }}>
+          <h2 style={{ margin: 0, fontSize: 22 }}>Add Custom Date</h2>
+          <div style={{ color: C.textDim, fontSize: 14 }}>
+            Add your own seasonal launch dates, niche anniversaries, or promo windows.
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 150px 1.2fr", gap: 12 }}>
+          <Select
+            value={customForm.month}
+            onChange={(value) => setCustomForm((prev) => ({ ...prev, month: value }))}
+            options={Object.keys(MONTH_TO_INDEX)}
+          />
+          <Input
+            value={customForm.rawDay}
+            onChange={(value) => setCustomForm((prev) => ({ ...prev, rawDay: value }))}
+            placeholder="Day"
+          />
+          <Select
+            value={customForm.type}
+            onChange={(value) => setCustomForm((prev) => ({ ...prev, type: value }))}
+            options={["holiday", "niche"]}
+          />
+          <Input
+            value={customForm.event}
+            onChange={(value) => setCustomForm((prev) => ({ ...prev, event: value }))}
+            placeholder="Event name"
+          />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 12, alignItems: "start" }}>
+          <Select
+            value={customForm.niche}
+            onChange={(value) => setCustomForm((prev) => ({ ...prev, niche: value }))}
+            options={nicheOptions}
+            placeholder="Related niche"
+          />
+          <Input
+            value={customForm.ideas}
+            onChange={(value) => setCustomForm((prev) => ({ ...prev, ideas: value }))}
+            placeholder="POD design ideas"
+          />
+          <Btn onClick={addCustomDate}>+ Add Custom Date</Btn>
+        </div>
+        {(data?.customDates || []).length > 0 && (
+          <div style={{ display: "grid", gap: 10 }}>
+            <div style={{ fontSize: 14, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>
+              Your Custom Dates
+            </div>
+            <Table
+              columns={[
+                { key: "month", label: "Month" },
+                { key: "rawDay", label: "Date" },
+                { key: "niche", label: "Niche", maxW: 180 },
+                {
+                  key: "type",
+                  label: "Type",
+                  render: (value) => (
+                    <Badge color={value === "holiday" ? "warn" : "accent"}>
+                      {value === "holiday" ? "Holiday" : "Niche Day"}
+                    </Badge>
+                  ),
+                },
+                { key: "event", label: "Event", maxW: 240 },
+                { key: "ideas", label: "Ideas", maxW: 260 },
+              ]}
+              data={data.customDates}
+              onDelete={(index) => deleteCustomDate(index)}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -6012,7 +6098,7 @@ function TrademarkView({ loading, setLoading, plan, usage, setUsage }) {
             style={{ flex: 1, fontSize: 17, padding: "12px 16px" }}
           />
           {limits.trademark > 0 ? (
-            <Btn onClick={checkTrademark} disabled={!query.trim() || loading} style={{ padding: "12px 24px", fontSize: 16 }}>
+            <Btn onClick={checkTrademark} disabled={!query.trim()} loading={loading} loadingLabel="Checking trademark..." style={{ padding: "12px 24px", fontSize: 16 }}>
               ™ Check <UsageBadge used={usage.trademark || 0} limit={limits.trademark} />
             </Btn>
           ) : (
@@ -6366,7 +6452,7 @@ function ResearchView({ data, loading, setLoading, plan, usage, setUsage }) {
         />
         <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
           {limits.research > 0 ? (
-            <Btn onClick={research} disabled={!query.trim() || loading}>
+            <Btn onClick={research} disabled={!query.trim()} loading={loading} loadingLabel="Researching niche...">
               ✦ Research <UsageBadge used={usage.research || 0} limit={limits.research} />
             </Btn>
           ) : (
@@ -8158,12 +8244,12 @@ Return JSON: {
           {plan === "free" ? (
             <LockedBtn tooltip="Upgrade to Starter or Business to run AI niche research.">✦ AI Niche Research</LockedBtn>
           ) : (
-            <Btn onClick={runNicheResearch} disabled={loading}>
+            <Btn onClick={runNicheResearch} loading={loading} loadingLabel="Building snapshot...">
               ✦ AI Niche Research
             </Btn>
           )}
           {limits.dceb > 0 ? (
-            <Btn variant="ghost" onClick={runDcebRecheck} disabled={loading}>
+            <Btn variant="ghost" onClick={runDcebRecheck} loading={loading} loadingLabel="Rechecking DCEB...">
               Recheck DCEB
             </Btn>
           ) : (

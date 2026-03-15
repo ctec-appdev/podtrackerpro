@@ -38,6 +38,7 @@ const STORAGE = {
   trends: "pod-dash-trends",
   briefs: "pod-dash-briefs",
   seo: "pod-dash-seo",
+  ideas: "pod-dash-ideas",
   inventory: "pod-dash-inventory",
   performance: "pod-dash-perf",
 };
@@ -48,6 +49,7 @@ const EMPTY_TRACKER_DATA = {
   trends: [],
   briefs: [],
   seo: [],
+  ideas: [],
   inventory: [],
   performance: [],
 };
@@ -66,8 +68,16 @@ const TABS = [
       { id: "research", label: "AI Research", icon: "✦" },
     ],
   },
-  { id: "briefs", label: "Design Briefs", icon: "✎" },
-  { id: "seo", label: "SEO Copy", icon: "¶" },
+  {
+    id: "design-group",
+    label: "Design",
+    icon: "✎",
+    children: [
+      { id: "briefs", label: "Design Briefs", icon: "✎" },
+      { id: "seo", label: "SEO Copy", icon: "¶" },
+      { id: "ideas", label: "New Ideas", icon: "✸" },
+    ],
+  },
   { id: "inventory", label: "Listings", icon: "▤" },
   { id: "guide", label: "Guide", icon: "?" },
 ];
@@ -77,6 +87,39 @@ const BOTTOM_TABS = [
 ];
 
 const CANNY_BOARD_URL = "https://podtrackerpro.canny.io/feature-requests";
+
+const IDEA_COLUMNS = [
+  {
+    id: "backlog",
+    label: "Backlog",
+    stripe: "#64748b",
+    help: "Capture rough concepts fast. Add a title first, then flesh out the details when you are ready.",
+  },
+  {
+    id: "researching",
+    label: "Researching",
+    stripe: "#3b82f6",
+    help: "Use this stage to connect the idea to niches, trends, and keywords that look promising.",
+  },
+  {
+    id: "designing",
+    label: "Designing",
+    stripe: "#f59e0b",
+    help: "Move cards here once you are sketching, prompting, or building the actual artwork.",
+  },
+  {
+    id: "reviewing",
+    label: "Reviewing",
+    stripe: "#8b5cf6",
+    help: "Use this lane for quality control, trademark review, copy polish, and final checks.",
+  },
+  {
+    id: "posted",
+    label: "Posted",
+    stripe: "#10b981",
+    help: "Drop finished ideas here once the design is live so you have a lightweight win log.",
+  },
+];
 
 const EXAMPLE_ROWS = {
   niches: {
@@ -340,6 +383,14 @@ async function saveTrackerState(tracker) {
   }
 
   return normalized;
+}
+
+function generateIdeaId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return `idea-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 // ─── CSV IMPORT / EXPORT HELPERS ───────────────
@@ -1842,7 +1893,7 @@ export default function PODTracker() {
   const { data: session, status } = useSession();
   const [tab, setTab] = useState("dashboard");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [openNavGroups, setOpenNavGroups] = useState({ "research-group": true });
+  const [openNavGroups, setOpenNavGroups] = useState({ "research-group": true, "design-group": true });
   const [data, setData] = useState(EMPTY_TRACKER_DATA);
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -2337,6 +2388,9 @@ export default function PODTracker() {
         )}
         {tab === "seo" && (
           <SEOView data={data} addItem={addItem} deleteItem={deleteItem} updateItem={updateItem} loading={loading} setLoading={setLoading} plan={plan} usage={usage} setUsage={setUsage} />
+        )}
+        {tab === "ideas" && (
+          <IdeasView data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} />
         )}
         {tab === "inventory" && (
           <InventoryView data={data} addItem={addItem} deleteItem={deleteItem} updateItem={updateItem} importItems={importItems} plan={plan} />
@@ -4349,6 +4403,532 @@ function ResearchView({ data, loading, setLoading, plan, usage, setUsage }) {
             </div>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ─── IDEAS VIEW ────────────────────────────────
+function IdeasView({ data, addItem, updateItem, deleteItem }) {
+  const ideas = Array.isArray(data.ideas) ? data.ideas : [];
+  const [quickTitle, setQuickTitle] = useState("");
+  const [activeIdeaId, setActiveIdeaId] = useState(null);
+  const [editorDraft, setEditorDraft] = useState(null);
+  const [draggingIdeaId, setDraggingIdeaId] = useState(null);
+  const [celebration, setCelebration] = useState(null);
+  const editorRef = useRef(null);
+
+  const nicheOptions = useMemo(
+    () => Array.from(new Set((data.niches || []).map((item) => item?.niche).filter(Boolean))).sort(),
+    [data.niches]
+  );
+  const trendOptions = useMemo(
+    () => Array.from(new Set((data.trends || []).map((item) => item?.trend).filter(Boolean))).sort(),
+    [data.trends]
+  );
+  const keywordOptions = useMemo(
+    () => Array.from(new Set((data.keywords || []).map((item) => item?.keyword).filter(Boolean))).sort(),
+    [data.keywords]
+  );
+
+  const ideasByColumn = useMemo(
+    () =>
+      Object.fromEntries(
+        IDEA_COLUMNS.map((column) => [
+          column.id,
+          ideas
+            .filter((idea) => (idea?.status || "backlog") === column.id)
+            .sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()),
+        ])
+      ),
+    [ideas]
+  );
+
+  const activeIdea = useMemo(
+    () => ideas.find((idea) => idea.id === activeIdeaId) || null,
+    [ideas, activeIdeaId]
+  );
+
+  useEffect(() => {
+    if (!activeIdea) return;
+
+    setEditorDraft({
+      ...activeIdea,
+      keywordsText: Array.isArray(activeIdea.keywords) ? activeIdea.keywords.join(", ") : "",
+    });
+  }, [activeIdea]);
+
+  useEffect(() => {
+    if (!activeIdea || !editorRef.current) return;
+    const nextHtml = activeIdea.notesHtml || "<p></p>";
+    if (editorRef.current.innerHTML !== nextHtml) {
+      editorRef.current.innerHTML = nextHtml;
+    }
+  }, [activeIdea]);
+
+  useEffect(() => {
+    if (!celebration) return undefined;
+    const timeoutId = window.setTimeout(() => setCelebration(null), 2600);
+    return () => window.clearTimeout(timeoutId);
+  }, [celebration]);
+
+  const persistIdea = useCallback(
+    async (idea) => {
+      const index = ideas.findIndex((item) => item.id === idea.id);
+      if (index === -1) {
+        await addItem("ideas", idea);
+        return;
+      }
+      await updateItem("ideas", index, idea);
+    },
+    [addItem, ideas, updateItem]
+  );
+
+  const createIdea = async () => {
+    const title = quickTitle.trim();
+    if (!title) return;
+
+    const now = new Date().toISOString();
+    const nextIdea = {
+      id: generateIdeaId(),
+      title,
+      niche: "",
+      trend: "",
+      keywords: [],
+      platform: "Amazon Merch",
+      status: "backlog",
+      notesHtml: "<p></p>",
+      updatedAt: now,
+      createdAt: now,
+    };
+
+    await addItem("ideas", nextIdea);
+    setQuickTitle("");
+    setActiveIdeaId(nextIdea.id);
+  };
+
+  const moveIdea = useCallback(
+    async (ideaId, nextStatus) => {
+      const idea = ideas.find((item) => item.id === ideaId);
+      if (!idea || idea.status === nextStatus) return;
+
+      const updatedIdea = {
+        ...idea,
+        status: nextStatus,
+        updatedAt: new Date().toISOString(),
+      };
+
+      await persistIdea(updatedIdea);
+
+      if (nextStatus === "posted") {
+        setCelebration({
+          title: idea.title,
+          message: "Nice work. You moved an idea all the way to Posted.",
+        });
+      }
+    },
+    [ideas, persistIdea]
+  );
+
+  const saveEditor = async () => {
+    if (!editorDraft) return;
+
+    const html = editorRef.current?.innerHTML || editorDraft.notesHtml || "<p></p>";
+    const nextIdea = {
+      ...editorDraft,
+      title: editorDraft.title?.trim() || "Untitled Idea",
+      niche: editorDraft.niche?.trim() || "",
+      trend: editorDraft.trend?.trim() || "",
+      platform: editorDraft.platform?.trim() || "Amazon Merch",
+      keywords: (editorDraft.keywordsText || "")
+        .split(",")
+        .map((keyword) => keyword.trim())
+        .filter(Boolean),
+      notesHtml: html,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await persistIdea(nextIdea);
+    setActiveIdeaId(nextIdea.id);
+  };
+
+  const removeIdea = async () => {
+    if (!activeIdea) return;
+    const index = ideas.findIndex((item) => item.id === activeIdea.id);
+    if (index === -1) return;
+    await deleteItem("ideas", index);
+    setActiveIdeaId(null);
+    setEditorDraft(null);
+  };
+
+  const applyFormat = (command) => {
+    if (!editorRef.current) return;
+    editorRef.current.focus();
+    document.execCommand(command, false);
+  };
+
+  const infoButtonStyle = {
+    width: 22,
+    height: 22,
+    borderRadius: "50%",
+    border: `1px solid ${C.borderLight}`,
+    background: "rgba(255,255,255,0.04)",
+    color: C.textMuted,
+    fontFamily: sansFont,
+    fontSize: 13,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "help",
+  };
+
+  return (
+    <div>
+      {celebration && (
+        <div
+          style={{
+            position: "fixed",
+            top: 24,
+            right: 24,
+            zIndex: 40,
+            background: "linear-gradient(135deg, rgba(16,185,129,0.18), rgba(59,130,246,0.14))",
+            border: `1px solid ${C.success}`,
+            borderRadius: 12,
+            padding: "14px 18px",
+            boxShadow: "0 18px 48px rgba(0,0,0,0.34)",
+            maxWidth: 340,
+          }}
+        >
+          <div style={{ fontFamily: font, fontSize: 13, color: C.success, textTransform: "uppercase", letterSpacing: 1 }}>
+            +1 Completed
+          </div>
+          <div style={{ fontFamily: sansFont, fontSize: 18, color: C.white, fontWeight: 700, marginTop: 4 }}>
+            {celebration.title}
+          </div>
+          <div style={{ fontSize: 14, color: C.text, marginTop: 4 }}>{celebration.message}</div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontSize: 27, fontWeight: 700, margin: "0 0 4px" }}>Ideas Board</h1>
+          <p style={{ color: C.textDim, fontSize: 19, margin: 0, fontFamily: font }}>
+            Capture concepts quickly, then pull them across the design workflow as they mature.
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <Input
+            value={quickTitle}
+            onChange={setQuickTitle}
+            placeholder="Add a new idea to Backlog"
+            style={{ minWidth: 260 }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                createIdea();
+              }
+            }}
+          />
+          <Btn onClick={createIdea} disabled={!quickTitle.trim()}>
+            + New Idea
+          </Btn>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, alignItems: "start" }}>
+        {IDEA_COLUMNS.map((column) => {
+          const columnIdeas = ideasByColumn[column.id] || [];
+
+          return (
+            <div
+              key={column.id}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={async (event) => {
+                event.preventDefault();
+                const ideaId = event.dataTransfer.getData("text/plain") || draggingIdeaId;
+                setDraggingIdeaId(null);
+                if (ideaId) {
+                  await moveIdea(ideaId, column.id);
+                }
+              }}
+              style={{
+                background: C.card,
+                border: `1px solid ${C.border}`,
+                borderRadius: 12,
+                minHeight: 420,
+                overflow: "hidden",
+              }}
+            >
+              <div style={{ height: 5, background: column.stripe }} />
+              <div style={{ padding: 14, borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <div>
+                  <div style={{ fontFamily: font, fontSize: 14, textTransform: "uppercase", letterSpacing: 0.8, color: C.white }}>
+                    {column.label}
+                  </div>
+                  <div style={{ fontSize: 13, color: C.textMuted, marginTop: 4 }}>{columnIdeas.length} card{columnIdeas.length === 1 ? "" : "s"}</div>
+                </div>
+                <Tooltip title={column.help}>
+                  <button type="button" aria-label={`How to use ${column.label}`} style={infoButtonStyle}>
+                    i
+                  </button>
+                </Tooltip>
+              </div>
+
+              <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 10, minHeight: 360 }}>
+                {columnIdeas.length === 0 ? (
+                  <div
+                    style={{
+                      border: `1px dashed ${C.borderLight}`,
+                      borderRadius: 10,
+                      padding: 18,
+                      color: C.textMuted,
+                      fontSize: 14,
+                      lineHeight: 1.5,
+                      textAlign: "center",
+                    }}
+                  >
+                    Drop a card here when it reaches this stage.
+                  </div>
+                ) : (
+                  columnIdeas.map((idea) => (
+                    <button
+                      key={idea.id}
+                      type="button"
+                      draggable
+                      onDragStart={(event) => {
+                        event.dataTransfer.setData("text/plain", idea.id);
+                        setDraggingIdeaId(idea.id);
+                      }}
+                      onDragEnd={() => setDraggingIdeaId(null)}
+                      onClick={() => setActiveIdeaId(idea.id)}
+                      style={{
+                        textAlign: "left",
+                        border: idea.id === activeIdeaId ? `1px solid ${column.stripe}` : `1px solid ${C.border}`,
+                        background: idea.id === activeIdeaId ? "rgba(255,255,255,0.03)" : C.surface,
+                        borderRadius: 10,
+                        padding: 10,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+                        <div style={{ fontFamily: sansFont, fontSize: 15, fontWeight: 700, color: C.white, lineHeight: 1.3 }}>
+                          {idea.title || "Untitled Idea"}
+                        </div>
+                        <span style={{ color: C.textMuted, fontSize: 12 }}>⋮⋮</span>
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                        {idea.niche && <Badge>{idea.niche}</Badge>}
+                        {idea.trend && <Badge color="warn">{idea.trend}</Badge>}
+                      </div>
+                      {!!idea.keywords?.length && (
+                        <div style={{ marginTop: 8, color: C.textDim, fontSize: 13, lineHeight: 1.4 }}>
+                          {idea.keywords.slice(0, 3).join(", ")}
+                          {idea.keywords.length > 3 ? ` +${idea.keywords.length - 3}` : ""}
+                        </div>
+                      )}
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {activeIdea && editorDraft && (
+        <>
+          <div
+            onClick={() => setActiveIdeaId(null)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.46)",
+              zIndex: 30,
+            }}
+          />
+          <aside
+            style={{
+              position: "fixed",
+              top: 0,
+              right: 0,
+              width: "min(560px, 100vw)",
+              height: "100vh",
+              background: C.surface,
+              borderLeft: `1px solid ${C.border}`,
+              zIndex: 31,
+              padding: 24,
+              overflowY: "auto",
+              boxShadow: "-16px 0 48px rgba(0,0,0,0.32)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 18 }}>
+              <div>
+                <div style={{ fontFamily: font, fontSize: 13, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>
+                  Idea Details
+                </div>
+                <div style={{ fontSize: 24, color: C.white, fontWeight: 700, fontFamily: sansFont }}>
+                  {activeIdea.title || "Untitled Idea"}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveIdeaId(null)}
+                style={{
+                  border: `1px solid ${C.border}`,
+                  background: C.card,
+                  color: C.textDim,
+                  borderRadius: 8,
+                  width: 34,
+                  height: 34,
+                  cursor: "pointer",
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gap: 14 }}>
+              <div>
+                <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Title</label>
+                <Input
+                  value={editorDraft.title || ""}
+                  onChange={(value) => setEditorDraft((prev) => ({ ...prev, title: value }))}
+                />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+                <div>
+                  <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Niche</label>
+                  <Input
+                    value={editorDraft.niche || ""}
+                    onChange={(value) => setEditorDraft((prev) => ({ ...prev, niche: value }))}
+                    placeholder="Pick or type a niche"
+                    list="idea-niche-options"
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Trend</label>
+                  <Input
+                    value={editorDraft.trend || ""}
+                    onChange={(value) => setEditorDraft((prev) => ({ ...prev, trend: value }))}
+                    placeholder="Pick or type a trend"
+                    list="idea-trend-options"
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+                <div>
+                  <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Keywords</label>
+                  <Input
+                    value={editorDraft.keywordsText || ""}
+                    onChange={(value) => setEditorDraft((prev) => ({ ...prev, keywordsText: value }))}
+                    placeholder="Comma-separated keywords"
+                    list="idea-keyword-options"
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Status</label>
+                  <select
+                    value={editorDraft.status || "backlog"}
+                    onChange={(event) => setEditorDraft((prev) => ({ ...prev, status: event.target.value }))}
+                    style={{
+                      width: "100%",
+                      background: C.card,
+                      border: `1px solid ${C.border}`,
+                      borderRadius: 8,
+                      color: C.text,
+                      fontFamily: font,
+                      padding: "11px 12px",
+                    }}
+                  >
+                    {IDEA_COLUMNS.map((column) => (
+                      <option key={column.id} value={column.id}>
+                        {column.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Notes</label>
+                <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                  <Btn variant="ghost" onClick={() => applyFormat("bold")} style={{ fontSize: 13, padding: "6px 10px" }}>
+                    Bold
+                  </Btn>
+                  <Btn variant="ghost" onClick={() => applyFormat("italic")} style={{ fontSize: 13, padding: "6px 10px" }}>
+                    Italic
+                  </Btn>
+                  <Btn variant="ghost" onClick={() => applyFormat("insertUnorderedList")} style={{ fontSize: 13, padding: "6px 10px" }}>
+                    Bullets
+                  </Btn>
+                </div>
+                <div
+                  ref={editorRef}
+                  contentEditable
+                  suppressContentEditableWarning
+                  onInput={(event) =>
+                    setEditorDraft((prev) => ({ ...prev, notesHtml: event.currentTarget.innerHTML }))
+                  }
+                  style={{
+                    minHeight: 220,
+                    background: C.card,
+                    border: `1px solid ${C.border}`,
+                    borderRadius: 10,
+                    padding: 14,
+                    color: C.text,
+                    fontFamily: sansFont,
+                    fontSize: 15,
+                    lineHeight: 1.6,
+                    outline: "none",
+                  }}
+                />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginTop: 6 }}>
+                <Btn variant="danger" onClick={removeIdea}>
+                  Delete
+                </Btn>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <Btn variant="ghost" onClick={() => setActiveIdeaId(null)}>
+                    Close
+                  </Btn>
+                  <Btn
+                    onClick={async () => {
+                      const previousStatus = activeIdea.status;
+                      await saveEditor();
+                      if (editorDraft.status === "posted" && previousStatus !== "posted") {
+                        setCelebration({
+                          title: editorDraft.title || "Untitled Idea",
+                          message: "Nice work. You moved an idea all the way to Posted.",
+                        });
+                      }
+                    }}
+                  >
+                    Save Idea
+                  </Btn>
+                </div>
+              </div>
+            </div>
+
+            <datalist id="idea-niche-options">
+              {nicheOptions.map((option) => (
+                <option key={option} value={option} />
+              ))}
+            </datalist>
+            <datalist id="idea-trend-options">
+              {trendOptions.map((option) => (
+                <option key={option} value={option} />
+              ))}
+            </datalist>
+            <datalist id="idea-keyword-options">
+              {keywordOptions.map((option) => (
+                <option key={option} value={option} />
+              ))}
+            </datalist>
+          </aside>
+        </>
       )}
     </div>
   );

@@ -30,6 +30,10 @@ const trackerStateSchema = mongoose.Schema(
       type: [mongoose.Schema.Types.Mixed],
       default: [],
     },
+    ideas: {
+      type: [mongoose.Schema.Types.Mixed],
+      default: [],
+    },
     inventory: {
       type: [mongoose.Schema.Types.Mixed],
       default: [],

@@ -18,7 +18,6 @@ import MuiTable from "@mui/material/Table";
 import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import { useSession } from "next-auth/react";
-import CannyFeedback from "@/components/CannyFeedback";
 import apiClient from "@/libs/api";
 
 // ─── CONSTANTS ─────────────────────────────────
@@ -55,20 +54,29 @@ const EMPTY_TRACKER_DATA = {
 
 const TABS = [
   { id: "dashboard", label: "Dashboard", icon: "◈" },
-  { id: "niches", label: "Niches", icon: "◎" },
-  { id: "keywords", label: "Keywords", icon: "⌕" },
-  { id: "trends", label: "Trends", icon: "↗" },
+  {
+    id: "research-group",
+    label: "Research",
+    icon: "◫",
+    children: [
+      { id: "niches", label: "Niches", icon: "◎" },
+      { id: "keywords", label: "Keywords", icon: "⌕" },
+      { id: "trends", label: "Trends", icon: "↗" },
+      { id: "research", label: "AI Research", icon: "✦" },
+    ],
+  },
   { id: "briefs", label: "Design Briefs", icon: "✎" },
   { id: "seo", label: "SEO Copy", icon: "¶" },
-  { id: "inventory", label: "Inventory", icon: "▤" },
+  { id: "inventory", label: "Listings", icon: "▤" },
   { id: "trademark", label: "TM Check", icon: "™" },
-  { id: "research", label: "AI Research", icon: "✦" },
   { id: "guide", label: "Guide", icon: "?" },
 ];
 
 const BOTTOM_TABS = [
   { id: "improve-ptp", label: "Improve PTP", icon: "+" },
 ];
+
+const CANNY_BOARD_URL = "https://podtrackerpro.canny.io/feature-requests";
 
 const EXAMPLE_ROWS = {
   niches: {
@@ -2045,39 +2053,100 @@ export default function PODTracker() {
           )}
         </div>
 
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            title={isSidebarCollapsed ? t.label : undefined}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: isSidebarCollapsed ? "center" : "flex-start",
-              gap: 10,
-              padding: isSidebarCollapsed ? "10px 0" : "10px 20px",
-              border: "none",
-              cursor: "pointer",
-              background: tab === t.id ? C.accentGlow : "transparent",
-              color: tab === t.id ? C.accent : C.textDim,
-              fontFamily: font,
-              fontSize: 15,
-              textAlign: "left",
-              borderRight: tab === t.id ? `2px solid ${C.accent}` : "2px solid transparent",
-              transition: "all 0.15s",
-            }}
-          >
-            <span style={{ fontSize: 17, width: 18, textAlign: "center" }}>{t.icon}</span>
-            {!isSidebarCollapsed && t.label}
-          </button>
-        ))}
+        {TABS.map((t) => {
+          if (t.children?.length) {
+            const isGroupActive = t.children.some((child) => child.id === tab);
+
+            return (
+              <div key={t.id}>
+                <div
+                  title={isSidebarCollapsed ? t.label : undefined}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: isSidebarCollapsed ? "center" : "flex-start",
+                    gap: 10,
+                    padding: isSidebarCollapsed ? "10px 0" : "10px 20px 8px",
+                    color: isGroupActive ? C.white : C.textMuted,
+                    fontFamily: font,
+                    fontSize: 13,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.8,
+                  }}
+                >
+                  <span style={{ fontSize: 16, width: 18, textAlign: "center" }}>{t.icon}</span>
+                  {!isSidebarCollapsed && t.label}
+                </div>
+                {t.children.map((child) => (
+                  <button
+                    key={child.id}
+                    onClick={() => setTab(child.id)}
+                    title={isSidebarCollapsed ? child.label : undefined}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: isSidebarCollapsed ? "center" : "flex-start",
+                      gap: 10,
+                      padding: isSidebarCollapsed ? "10px 0" : "10px 20px 10px 34px",
+                      border: "none",
+                      cursor: "pointer",
+                      background: tab === child.id ? C.accentGlow : "transparent",
+                      color: tab === child.id ? C.accent : C.textDim,
+                      fontFamily: font,
+                      fontSize: 15,
+                      textAlign: "left",
+                      borderRight: tab === child.id ? `2px solid ${C.accent}` : "2px solid transparent",
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    <span style={{ fontSize: 17, width: 18, textAlign: "center" }}>{child.icon}</span>
+                    {!isSidebarCollapsed && child.label}
+                  </button>
+                ))}
+              </div>
+            );
+          }
+
+          return (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              title={isSidebarCollapsed ? t.label : undefined}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: isSidebarCollapsed ? "center" : "flex-start",
+                gap: 10,
+                padding: isSidebarCollapsed ? "10px 0" : "10px 20px",
+                border: "none",
+                cursor: "pointer",
+                background: tab === t.id ? C.accentGlow : "transparent",
+                color: tab === t.id ? C.accent : C.textDim,
+                fontFamily: font,
+                fontSize: 15,
+                textAlign: "left",
+                borderRight: tab === t.id ? `2px solid ${C.accent}` : "2px solid transparent",
+                transition: "all 0.15s",
+              }}
+            >
+              <span style={{ fontSize: 17, width: 18, textAlign: "center" }}>{t.icon}</span>
+              {!isSidebarCollapsed && t.label}
+            </button>
+          );
+        })}
 
         <div style={{ flex: 1 }} />
 
         {BOTTOM_TABS.map((t) => (
           <button
             key={t.id}
-            onClick={() => setTab(t.id)}
+            onClick={() => {
+              if (t.id === "improve-ptp") {
+                window.open(CANNY_BOARD_URL, "_blank", "noopener,noreferrer");
+                return;
+              }
+              setTab(t.id);
+            }}
             title={isSidebarCollapsed ? t.label : undefined}
             style={{
               display: "flex",
@@ -2087,12 +2156,12 @@ export default function PODTracker() {
               padding: isSidebarCollapsed ? "10px 0" : "10px 20px",
               border: "none",
               cursor: "pointer",
-              background: tab === t.id ? C.accentGlow : "transparent",
-              color: tab === t.id ? C.accent : C.textDim,
+              background: "transparent",
+              color: C.textDim,
               fontFamily: font,
               fontSize: 15,
               textAlign: "left",
-              borderRight: tab === t.id ? `2px solid ${C.accent}` : "2px solid transparent",
+              borderRight: "2px solid transparent",
               transition: "all 0.15s",
             }}
           >
@@ -2248,7 +2317,6 @@ export default function PODTracker() {
         {tab === "trademark" && <TrademarkView loading={loading} setLoading={setLoading} plan={plan} usage={usage} setUsage={setUsage} />}
         {tab === "research" && <ResearchView data={data} loading={loading} setLoading={setLoading} plan={plan} usage={usage} setUsage={setUsage} />}
         {tab === "guide" && <GuideView plan={plan} />}
-        {tab === "improve-ptp" && <CannyFeedback />}
       </main>
     </div>
   );
@@ -3658,7 +3726,7 @@ function InventoryView({ data, addItem, deleteItem, updateItem, importItems, pla
 
   return (
     <div>
-      <h1 style={{ fontSize: 27, fontWeight: 700, margin: "0 0 4px" }}>Inventory Tracker</h1>
+      <h1 style={{ fontSize: 27, fontWeight: 700, margin: "0 0 4px" }}>Listings Tracker</h1>
       <p style={{ color: C.textDim, fontSize: 19, margin: "0 0 24px", fontFamily: font }}>
         Track live listings across all platforms
       </p>

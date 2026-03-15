@@ -34,6 +34,10 @@ const trackerStateSchema = mongoose.Schema(
       type: [mongoose.Schema.Types.Mixed],
       default: [],
     },
+    customNiches: {
+      type: [mongoose.Schema.Types.Mixed],
+      default: [],
+    },
     nicheProfiles: {
       type: [mongoose.Schema.Types.Mixed],
       default: [],

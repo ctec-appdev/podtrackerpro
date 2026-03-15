@@ -19,6 +19,10 @@ import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import { useSession } from "next-auth/react";
 import apiClient from "@/libs/api";
+import StandaloneNicheSelect, {
+  DEFAULT_NICHE_OPTIONS,
+  normalizeNicheOptionLabel,
+} from "@/components/NicheSelect";
 
 // ─── CONSTANTS ─────────────────────────────────
 const PLATFORMS = ["Amazon Merch", "Redbubble", "Etsy", "TeeSpring/Spring", "TeePublic", "Other"];
@@ -39,6 +43,7 @@ const STORAGE = {
   briefs: "pod-dash-briefs",
   seo: "pod-dash-seo",
   ideas: "pod-dash-ideas",
+  customNiches: "pod-dash-custom-niches",
   nicheProfiles: "pod-dash-niche-profiles",
   inventory: "pod-dash-inventory",
   performance: "pod-dash-perf",
@@ -51,6 +56,7 @@ const EMPTY_TRACKER_DATA = {
   briefs: [],
   seo: [],
   ideas: [],
+  customNiches: [],
   nicheProfiles: [],
   inventory: [],
   performance: [],
@@ -398,6 +404,7 @@ function generateIdeaId() {
 function getNicheProfileId(niche) {
   return normalizeCompareValue(niche || "");
 }
+
 
 // ─── CSV IMPORT / EXPORT HELPERS ───────────────
 function parseCSVLine(line) {
@@ -2459,7 +2466,7 @@ export default function PODTracker() {
           <SEOView data={data} addItem={addItem} deleteItem={deleteItem} updateItem={updateItem} loading={loading} setLoading={setLoading} plan={plan} usage={usage} setUsage={setUsage} openNicheHome={openNicheHome} />
         )}
         {tab === "ideas" && (
-          <IdeasView data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} openNicheHome={openNicheHome} />
+            <IdeasView data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} update={update} openNicheHome={openNicheHome} />
         )}
         {tab === "inventory" && (
           <InventoryView data={data} addItem={addItem} deleteItem={deleteItem} updateItem={updateItem} importItems={importItems} plan={plan} />
@@ -4525,8 +4532,8 @@ function ResearchView({ data, loading, setLoading, plan, usage, setUsage }) {
 }
 
 // ─── IDEAS VIEW ────────────────────────────────
-function IdeasView({ data, addItem, updateItem, deleteItem, openNicheHome }) {
-  const ideas = Array.isArray(data.ideas) ? data.ideas : [];
+function IdeasView({ data, addItem, updateItem, deleteItem, update, openNicheHome }) {
+  const ideas = useMemo(() => (Array.isArray(data.ideas) ? data.ideas : []), [data.ideas]);
   const [quickTitle, setQuickTitle] = useState("");
   const [activeIdeaId, setActiveIdeaId] = useState(null);
   const [editorDraft, setEditorDraft] = useState(null);
@@ -4534,9 +4541,23 @@ function IdeasView({ data, addItem, updateItem, deleteItem, openNicheHome }) {
   const [celebration, setCelebration] = useState(null);
   const editorRef = useRef(null);
 
+  const customNicheOptions = useMemo(
+    () =>
+      Array.from(
+        new Set((data.customNiches || []).map((item) => normalizeNicheOptionLabel(item)).filter(Boolean))
+      ).sort(),
+    [data.customNiches]
+  );
   const nicheOptions = useMemo(
-    () => Array.from(new Set((data.niches || []).map((item) => item?.niche).filter(Boolean))).sort(),
-    [data.niches]
+    () =>
+      Array.from(
+        new Set([
+          ...DEFAULT_NICHE_OPTIONS,
+          ...(data.niches || []).map((item) => normalizeNicheOptionLabel(item?.niche)).filter(Boolean),
+          ...customNicheOptions,
+        ])
+      ).sort(),
+    [customNicheOptions, data.niches]
   );
   const trendOptions = useMemo(
     () => Array.from(new Set((data.trends || []).map((item) => item?.trend).filter(Boolean))).sort(),
@@ -4546,6 +4567,38 @@ function IdeasView({ data, addItem, updateItem, deleteItem, openNicheHome }) {
     () => Array.from(new Set((data.keywords || []).map((item) => item?.keyword).filter(Boolean))).sort(),
     [data.keywords]
   );
+  const briefOptions = useMemo(
+    () => (data.briefs || []).map((item) => ({
+      id: item.id,
+      label: `${item.id} · ${item.slogan || item.concept || item.niche || "Untitled brief"}`,
+    })),
+    [data.briefs]
+  );
+  const linkedListingsByIdeaId = useMemo(
+    () =>
+      Object.fromEntries(
+        (data.inventory || [])
+          .filter((item) => item?.ideaId)
+          .map((item) => [item.ideaId, item])
+      ),
+    [data.inventory]
+  );
+
+  const buildListingDraft = useCallback((idea, source = {}) => {
+    const briefIds = Array.isArray(idea?.briefIds) ? idea.briefIds.filter(Boolean) : [];
+    return {
+      sku: source?.sku || "",
+      design: source?.design || idea?.title || "",
+      briefId: source?.briefId || briefIds[0] || "",
+      platform: source?.platform || idea?.platform || "Amazon Merch",
+      url: source?.url || "",
+      imageUrl: source?.imageUrl || "",
+      status: source?.status || "Active",
+      notes: source?.notes || "",
+      dateListed: source?.dateListed || localDateKey(),
+      sales: source?.sales ?? "",
+    };
+  }, []);
 
   const ideasByColumn = useMemo(
     () =>
@@ -4567,12 +4620,16 @@ function IdeasView({ data, addItem, updateItem, deleteItem, openNicheHome }) {
 
   useEffect(() => {
     if (!activeIdea) return;
+    const linkedListing = linkedListingsByIdeaId[activeIdea.id];
+    const listingSeed = { ...(activeIdea.listing || {}), ...(linkedListing || {}) };
 
     setEditorDraft({
       ...activeIdea,
       keywordsText: Array.isArray(activeIdea.keywords) ? activeIdea.keywords.join(", ") : "",
+      briefIds: Array.isArray(activeIdea.briefIds) ? activeIdea.briefIds : [],
+      listing: buildListingDraft(activeIdea, listingSeed),
     });
-  }, [activeIdea]);
+  }, [activeIdea, buildListingDraft, linkedListingsByIdeaId]);
 
   useEffect(() => {
     if (!activeIdea || !editorRef.current) return;
@@ -4600,6 +4657,77 @@ function IdeasView({ data, addItem, updateItem, deleteItem, openNicheHome }) {
     [addItem, ideas, updateItem]
   );
 
+  const saveCustomNiches = useCallback(
+    async (nextOptions) => {
+      const deduped = Array.from(
+        new Set(
+          nextOptions
+            .map((item) => normalizeNicheOptionLabel(item))
+            .filter(
+              (item) =>
+                item &&
+                !DEFAULT_NICHE_OPTIONS.some(
+                  (preset) => normalizeCompareValue(preset) === normalizeCompareValue(item)
+                )
+            )
+        )
+      ).sort();
+      await update("customNiches", deduped);
+      return deduped;
+    },
+    [update]
+  );
+
+  const handleAddCustomNiche = useCallback(
+    async (nextValue) => {
+      const normalized = normalizeNicheOptionLabel(nextValue);
+      if (!normalized) return;
+      if (nicheOptions.some((option) => normalizeCompareValue(option) === normalizeCompareValue(normalized))) {
+        return;
+      }
+      await saveCustomNiches([...customNicheOptions, normalized]);
+    },
+    [customNicheOptions, nicheOptions, saveCustomNiches]
+  );
+
+  const handleRenameCustomNiche = useCallback(
+    async (currentValue) => {
+      const renamed = window.prompt("Rename custom niche", currentValue);
+      const normalized = normalizeNicheOptionLabel(renamed);
+
+      if (!normalized || normalizeCompareValue(normalized) === normalizeCompareValue(currentValue)) {
+        return;
+      }
+
+      if (nicheOptions.some((option) => normalizeCompareValue(option) === normalizeCompareValue(normalized))) {
+        alert("That niche already exists in the list.");
+        return;
+      }
+
+      await saveCustomNiches(
+        customNicheOptions.map((option) =>
+          normalizeCompareValue(option) === normalizeCompareValue(currentValue) ? normalized : option
+        )
+      );
+
+      setEditorDraft((prev) => (
+        prev && normalizeCompareValue(prev.niche) === normalizeCompareValue(currentValue)
+          ? { ...prev, niche: normalized }
+          : prev
+      ));
+    },
+    [customNicheOptions, nicheOptions, saveCustomNiches]
+  );
+
+  const handleDeleteCustomNiche = useCallback(
+    async (targetValue) => {
+      await saveCustomNiches(
+        customNicheOptions.filter((option) => normalizeCompareValue(option) !== normalizeCompareValue(targetValue))
+      );
+    },
+    [customNicheOptions, saveCustomNiches]
+  );
+
   const createIdea = async () => {
     const title = quickTitle.trim();
     if (!title) return;
@@ -4611,6 +4739,7 @@ function IdeasView({ data, addItem, updateItem, deleteItem, openNicheHome }) {
       niche: "",
       trend: "",
       keywords: [],
+      briefIds: [],
       platform: "Amazon Merch",
       status: "backlog",
       notesHtml: "<p></p>",
@@ -4650,6 +4779,7 @@ function IdeasView({ data, addItem, updateItem, deleteItem, openNicheHome }) {
     if (!editorDraft) return;
 
     const html = editorRef.current?.innerHTML || editorDraft.notesHtml || "<p></p>";
+    const normalizedListing = buildListingDraft(editorDraft, editorDraft.listing || {});
     const nextIdea = {
       ...editorDraft,
       title: editorDraft.title?.trim() || "Untitled Idea",
@@ -4660,9 +4790,48 @@ function IdeasView({ data, addItem, updateItem, deleteItem, openNicheHome }) {
         .split(",")
         .map((keyword) => keyword.trim())
         .filter(Boolean),
+      briefIds: Array.isArray(editorDraft.briefIds) ? editorDraft.briefIds.filter(Boolean) : [],
+      listing: activeIdea?.listing || linkedListingsByIdeaId[editorDraft.id] || null,
       notesHtml: html,
       updatedAt: new Date().toISOString(),
     };
+
+    const linkedListingIndex = (data.inventory || []).findIndex((item) => item?.ideaId === nextIdea.id);
+    const hasLinkedListing = linkedListingIndex >= 0;
+    const hasMeaningfulListingData =
+      !!normalizedListing.sku.trim() ||
+      !!normalizedListing.url.trim() ||
+      !!normalizedListing.imageUrl.trim() ||
+      !!normalizedListing.notes.trim() ||
+      !!String(normalizedListing.sales ?? "").trim() ||
+      (normalizedListing.design || "").trim() !== (nextIdea.title || "").trim();
+
+    if (nextIdea.status === "posted" && (hasLinkedListing || hasMeaningfulListingData)) {
+      const nextInventoryItem = {
+        ...normalizedListing,
+        ideaId: nextIdea.id,
+        design: normalizedListing.design?.trim() || nextIdea.title || "Untitled Idea",
+        briefId: normalizedListing.briefId?.trim() || nextIdea.briefIds?.[0] || "",
+        platform: normalizedListing.platform?.trim() || nextIdea.platform || "Amazon Merch",
+        url: normalizedListing.url?.trim() || "",
+        imageUrl: normalizedListing.imageUrl?.trim() || "",
+        status: normalizedListing.status || "Active",
+        notes: normalizedListing.notes?.trim() || "",
+        dateListed: normalizedListing.dateListed || localDateKey(),
+        sales: normalizedListing.sales === "" ? "" : Number(normalizedListing.sales) || 0,
+      };
+      nextIdea.listing = { ...nextInventoryItem };
+      delete nextIdea.listing.ideaId;
+
+      if (hasLinkedListing) {
+        await updateItem("inventory", linkedListingIndex, {
+          ...data.inventory[linkedListingIndex],
+          ...nextInventoryItem,
+        });
+      } else {
+        await addItem("inventory", nextInventoryItem);
+      }
+    }
 
     await persistIdea(nextIdea);
     setActiveIdeaId(nextIdea.id);
@@ -4846,6 +5015,18 @@ function IdeasView({ data, addItem, updateItem, deleteItem, openNicheHome }) {
                           {idea.keywords.length > 3 ? ` +${idea.keywords.length - 3}` : ""}
                         </div>
                       )}
+                  {!!idea.briefIds?.length && (
+                        <div style={{ marginTop: 8, color: C.textMuted, fontSize: 12, lineHeight: 1.4 }}>
+                          Briefs: {idea.briefIds.slice(0, 2).join(", ")}
+                          {idea.briefIds.length > 2 ? ` +${idea.briefIds.length - 2}` : ""}
+                        </div>
+                      )}
+                      {idea.status === "posted" && (linkedListingsByIdeaId[idea.id] || idea.listing) && (
+                        <div style={{ marginTop: 8, color: C.success, fontSize: 12, lineHeight: 1.4 }}>
+                          Listing: {(linkedListingsByIdeaId[idea.id] || idea.listing)?.platform || "Amazon Merch"} ·{" "}
+                          {(linkedListingsByIdeaId[idea.id] || idea.listing)?.status || "Draft"}
+                        </div>
+                      )}
                     </button>
                   ))
                 )}
@@ -4919,11 +5100,16 @@ function IdeasView({ data, addItem, updateItem, deleteItem, openNicheHome }) {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
                 <div>
                   <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Niche</label>
-                  <Input
+                  <StandaloneNicheSelect
                     value={editorDraft.niche || ""}
                     onChange={(value) => setEditorDraft((prev) => ({ ...prev, niche: value }))}
-                    placeholder="Pick or type a niche"
-                    list="idea-niche-options"
+                    presetOptions={DEFAULT_NICHE_OPTIONS}
+                    customOptions={customNicheOptions}
+                    onAddCustom={handleAddCustomNiche}
+                    onRenameCustom={handleRenameCustomNiche}
+                    onDeleteCustom={handleDeleteCustomNiche}
+                    colors={C}
+                    fontFamily={font}
                   />
                 </div>
                 <div>
@@ -4970,6 +5156,158 @@ function IdeasView({ data, addItem, updateItem, deleteItem, openNicheHome }) {
                   </select>
                 </div>
               </div>
+
+              <div>
+                <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Design Briefs</label>
+                <select
+                  multiple
+                  value={editorDraft.briefIds || []}
+                  onChange={(event) => {
+                    const values = Array.from(event.target.selectedOptions).map((option) => option.value);
+                    setEditorDraft((prev) => ({ ...prev, briefIds: values }));
+                  }}
+                  style={{
+                    width: "100%",
+                    minHeight: 132,
+                    background: C.card,
+                    border: `1px solid ${C.border}`,
+                    borderRadius: 8,
+                    color: C.text,
+                    fontFamily: font,
+                    padding: "10px 12px",
+                  }}
+                >
+                  {briefOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <div style={{ color: C.textMuted, fontSize: 12, marginTop: 6 }}>
+                  Hold `Ctrl` or `Cmd` to select multiple briefs.
+                </div>
+              </div>
+
+              {editorDraft.status === "posted" && (
+                <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 12 }}>
+                    <div>
+                      <div style={{ fontFamily: font, fontSize: 13, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>
+                        Listing Details
+                      </div>
+                      <div style={{ fontSize: 14, color: C.textDim, marginTop: 4 }}>
+                        Save this idea to sync the listing into the Listings table.
+                      </div>
+                    </div>
+                    <Badge color="success">Posted</Badge>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+                    <div>
+                      <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>SKU</label>
+                      <Input
+                        value={editorDraft.listing?.sku || ""}
+                        onChange={(value) =>
+                          setEditorDraft((prev) => ({ ...prev, listing: { ...(prev.listing || {}), sku: value } }))
+                        }
+                        placeholder="POD-001"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Design</label>
+                      <Input
+                        value={editorDraft.listing?.design || ""}
+                        onChange={(value) =>
+                          setEditorDraft((prev) => ({ ...prev, listing: { ...(prev.listing || {}), design: value } }))
+                        }
+                        placeholder="Design name"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Brief ID</label>
+                      <Input
+                        value={editorDraft.listing?.briefId || ""}
+                        onChange={(value) =>
+                          setEditorDraft((prev) => ({ ...prev, listing: { ...(prev.listing || {}), briefId: value } }))
+                        }
+                        placeholder="DB-001"
+                        list="idea-brief-options"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Platform</label>
+                      <Select
+                        value={editorDraft.listing?.platform || "Amazon Merch"}
+                        onChange={(value) =>
+                          setEditorDraft((prev) => ({ ...prev, listing: { ...(prev.listing || {}), platform: value } }))
+                        }
+                        options={PLATFORMS}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Status</label>
+                      <Select
+                        value={editorDraft.listing?.status || "Active"}
+                        onChange={(value) =>
+                          setEditorDraft((prev) => ({ ...prev, listing: { ...(prev.listing || {}), status: value } }))
+                        }
+                        options={LISTING_STATUS}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Date Listed</label>
+                      <Input
+                        type="date"
+                        value={editorDraft.listing?.dateListed || ""}
+                        onChange={(value) =>
+                          setEditorDraft((prev) => ({ ...prev, listing: { ...(prev.listing || {}), dateListed: value } }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Listing URL</label>
+                      <Input
+                        value={editorDraft.listing?.url || ""}
+                        onChange={(value) =>
+                          setEditorDraft((prev) => ({ ...prev, listing: { ...(prev.listing || {}), url: value } }))
+                        }
+                        placeholder="https://example.com/listing"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Image URL</label>
+                      <Input
+                        value={editorDraft.listing?.imageUrl || ""}
+                        onChange={(value) =>
+                          setEditorDraft((prev) => ({ ...prev, listing: { ...(prev.listing || {}), imageUrl: value } }))
+                        }
+                        placeholder="https://images.example.com/design.jpg"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Sales</label>
+                      <Input
+                        type="number"
+                        value={editorDraft.listing?.sales ?? ""}
+                        onChange={(value) =>
+                          setEditorDraft((prev) => ({ ...prev, listing: { ...(prev.listing || {}), sales: value } }))
+                        }
+                        placeholder="0"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Listing Notes</label>
+                      <Input
+                        value={editorDraft.listing?.notes || ""}
+                        onChange={(value) =>
+                          setEditorDraft((prev) => ({ ...prev, listing: { ...(prev.listing || {}), notes: value } }))
+                        }
+                        placeholder="Launch notes, pricing, performance..."
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label style={{ display: "block", fontFamily: font, color: C.textMuted, fontSize: 13, marginBottom: 6 }}>Notes</label>
@@ -5033,9 +5371,9 @@ function IdeasView({ data, addItem, updateItem, deleteItem, openNicheHome }) {
               </div>
             </div>
 
-            <datalist id="idea-niche-options">
-              {nicheOptions.map((option) => (
-                <option key={option} value={option} />
+            <datalist id="idea-brief-options">
+              {briefOptions.map((option) => (
+                <option key={option.id} value={option.id} />
               ))}
             </datalist>
             <datalist id="idea-trend-options">

@@ -4,7 +4,7 @@ import connectMongo from "@/libs/mongoose";
 import TrackerState from "@/models/TrackerState";
 import { handleRouteError, HttpError } from "@/libs/security/http";
 
-const TRACKER_KEYS = ["niches", "keywords", "trends", "briefs", "seo", "ideas", "nicheProfiles", "inventory", "performance"];
+const TRACKER_KEYS = ["niches", "keywords", "trends", "briefs", "seo", "ideas", "customNiches", "nicheProfiles", "inventory", "performance"];
 
 function emptyTrackerState() {
   return Object.fromEntries(TRACKER_KEYS.map((key) => [key, []]));

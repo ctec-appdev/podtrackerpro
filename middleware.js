@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/libs/auth"
+import { getToken } from "next-auth/jwt"
 import appConfig from "@/config"
 
-export default auth(async function middleware(req) {
-  const session = req.auth
+export default async function middleware(req) {
+  const session = await getToken({
+    req,
+    secret: process.env.NEXTAUTH_SECRET,
+  })
   const isProtected = req.nextUrl.pathname.startsWith("/dashboard")
 
   if (isProtected && !session) {
@@ -14,7 +17,7 @@ export default auth(async function middleware(req) {
     )
     return NextResponse.redirect(signInUrl)
   }
-})
+}
 
 export const config = {
   matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],

@@ -62,13 +62,13 @@ const TABS = [
       { id: "niches", label: "Niches", icon: "◎" },
       { id: "keywords", label: "Keywords", icon: "⌕" },
       { id: "trends", label: "Trends", icon: "↗" },
+      { id: "trademark", label: "TM Check", icon: "™" },
       { id: "research", label: "AI Research", icon: "✦" },
     ],
   },
   { id: "briefs", label: "Design Briefs", icon: "✎" },
   { id: "seo", label: "SEO Copy", icon: "¶" },
   { id: "inventory", label: "Listings", icon: "▤" },
-  { id: "trademark", label: "TM Check", icon: "™" },
   { id: "guide", label: "Guide", icon: "?" },
 ];
 

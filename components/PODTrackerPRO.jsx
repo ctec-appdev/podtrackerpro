@@ -4868,9 +4868,10 @@ function IdeasView({ data, addItem, updateItem, deleteItem }) {
                   ref={editorRef}
                   contentEditable
                   suppressContentEditableWarning
-                  onInput={(event) =>
-                    setEditorDraft((prev) => ({ ...prev, notesHtml: event.currentTarget.innerHTML }))
-                  }
+                  onInput={(event) => {
+                    const notesHtml = event.currentTarget?.innerHTML || "<p></p>";
+                    setEditorDraft((prev) => ({ ...prev, notesHtml }));
+                  }}
                   style={{
                     minHeight: 220,
                     background: C.card,

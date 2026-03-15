@@ -761,6 +761,82 @@ function getNicheProfileId(niche) {
   return normalizeCompareValue(niche || "");
 }
 
+function normalizeSubNicheLabel(subNiche = "") {
+  const trimmed = String(subNiche || "").trim();
+  return trimmed && trimmed !== "General" ? trimmed : "General";
+}
+
+function createDcebHistoryEntry(result, fallback = {}) {
+  const niche = result?.niche || fallback.niche || "";
+  const subNiche = normalizeSubNicheLabel(result?.subNiche || fallback.subNiche || "");
+  const demand = Number(result?.demand) || 0;
+  const competition = Number(result?.competition) || 0;
+  const evergreen = Number(result?.evergreen) || 0;
+  const brandability = Number(result?.brandability) || 0;
+  const score = ((demand + evergreen + brandability + (10 - competition)) / 4).toFixed(1);
+
+  return {
+    id: generateTrackerId("dceb"),
+    niche,
+    subNiche,
+    demand,
+    demandReason: result?.demandReason || "",
+    competition,
+    competitionReason: result?.competitionReason || "",
+    evergreen,
+    evergreenReason: result?.evergreenReason || "",
+    brandability,
+    brandabilityReason: result?.brandabilityReason || "",
+    summary: result?.summary || "",
+    suggestedKeywords: Array.isArray(result?.suggestedKeywords) ? result.suggestedKeywords : [],
+    verdict: result?.verdict || "Maybe",
+    score,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+async function persistDcebHistory({
+  data,
+  niche,
+  results,
+  addItem,
+  updateItem,
+}) {
+  const baseNiche = niche || results?.[0]?.niche || "";
+  if (!baseNiche || !Array.isArray(results) || !results.length) {
+    return [];
+  }
+
+  const profileKey = getNicheProfileId(baseNiche);
+  const profileIndex = (data?.nicheProfiles || []).findIndex(
+    (item) => getNicheProfileId(item?.niche) === profileKey
+  );
+  const existingProfile = profileIndex >= 0 ? data.nicheProfiles[profileIndex] : null;
+  const nextEntries = results.map((result) =>
+    createDcebHistoryEntry(result, { niche: baseNiche, subNiche: result?.subNiche || "" })
+  );
+  const mergedHistory = [...nextEntries, ...(existingProfile?.dcebHistory || [])].sort(
+    (left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+  );
+  const nextProfile = {
+    ...(existingProfile || {}),
+    niche: baseNiche,
+    notesHtml: existingProfile?.notesHtml || "<p></p>",
+    aiResearch: existingProfile?.aiResearch || null,
+    dcebHistory: mergedHistory,
+    latestDceb: mergedHistory[0] || null,
+    updatedAt: new Date().toISOString(),
+  };
+
+  if (profileIndex >= 0) {
+    await updateItem("nicheProfiles", profileIndex, nextProfile);
+  } else {
+    await addItem("nicheProfiles", nextProfile);
+  }
+
+  return nextEntries;
+}
+
 
 // ─── CSV IMPORT / EXPORT HELPERS ───────────────
 function parseCSVLine(line) {
@@ -3340,6 +3416,13 @@ Return JSON: {
     );
 
     setDcebResult(res);
+    await persistDcebHistory({
+      data,
+      niche: niche.trim(),
+      results: [res],
+      addItem,
+      updateItem,
+    });
     setLoading(false);
   };
 
@@ -3360,6 +3443,13 @@ Return JSON array: [{"subNiche":"...","demand":1-10,"demandReason":"short","comp
     );
 
     setSubNicheResults(res);
+    await persistDcebHistory({
+      data,
+      niche: niche.trim(),
+      results: Array.isArray(res) ? res.map((item) => ({ ...item, niche: niche.trim() })) : [],
+      addItem,
+      updateItem,
+    });
     setLoading(false);
   };
 
@@ -7786,6 +7876,7 @@ function NicheHomeView({
   const notesRef = useRef(null);
   const [profileDraft, setProfileDraft] = useState(null);
   const [savedBanner, setSavedBanner] = useState(false);
+  const [selectedDcebHistoryId, setSelectedDcebHistoryId] = useState("");
   const limits = PLAN_LIMITS[plan];
   const nicheKey = getNicheProfileId(niche);
 
@@ -7849,6 +7940,27 @@ function NicheHomeView({
     if (!scores.length) return "—";
     return (scores.reduce((sum, value) => sum + value, 0) / scores.length).toFixed(1);
   }, [focusNiches]);
+  const dcebHistory = useMemo(
+    () =>
+      [...(profile?.dcebHistory || [])].sort(
+        (left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+      ),
+    [profile?.dcebHistory]
+  );
+  const focusedDcebHistory = useMemo(() => {
+    if (!subNiche) {
+      return dcebHistory;
+    }
+
+    return dcebHistory.filter(
+      (entry) =>
+        normalizeCompareValue(normalizeSubNicheLabel(entry?.subNiche)) ===
+        normalizeCompareValue(normalizeSubNicheLabel(subNiche))
+    );
+  }, [dcebHistory, subNiche]);
+  const latestFocusedDceb = focusedDcebHistory[0] || null;
+  const selectedDcebEntry =
+    focusedDcebHistory.find((entry) => entry.id === selectedDcebHistoryId) || latestFocusedDceb;
 
   useEffect(() => {
     if (!niche) return;
@@ -7856,6 +7968,8 @@ function NicheHomeView({
       niche,
       notesHtml: profile?.notesHtml || "<p></p>",
       aiResearch: profile?.aiResearch || null,
+      dcebHistory: profile?.dcebHistory || [],
+      latestDceb: profile?.latestDceb || null,
       updatedAt: profile?.updatedAt || "",
     });
   }, [niche, profile]);
@@ -7874,6 +7988,10 @@ function NicheHomeView({
     return () => window.clearTimeout(timeoutId);
   }, [savedBanner]);
 
+  useEffect(() => {
+    setSelectedDcebHistoryId(latestFocusedDceb?.id || "");
+  }, [latestFocusedDceb?.id]);
+
   const saveProfile = useCallback(
     async (updates = {}) => {
       if (!niche) return;
@@ -7881,6 +7999,8 @@ function NicheHomeView({
         niche,
         notesHtml: notesRef.current?.innerHTML || profileDraft?.notesHtml || "<p></p>",
         aiResearch: profileDraft?.aiResearch || null,
+        dcebHistory: profileDraft?.dcebHistory || profile?.dcebHistory || [],
+        latestDceb: profileDraft?.latestDceb || profile?.latestDceb || null,
         updatedAt: new Date().toISOString(),
         ...updates,
       };
@@ -7894,7 +8014,7 @@ function NicheHomeView({
       setProfileDraft(nextProfile);
       setSavedBanner(true);
     },
-    [addItem, niche, profileDraft, profileIndex, updateItem]
+    [addItem, niche, profile?.dcebHistory, profile?.latestDceb, profileDraft, profileIndex, updateItem]
   );
 
   const runNicheResearch = async () => {
@@ -7943,6 +8063,59 @@ Return JSON:
     await saveProfile({ aiResearch: result });
   };
 
+  const runDcebRecheck = async () => {
+    if (!niche) return;
+    if (!limits.dceb) return;
+
+    const allowed = await checkAndConsumeUsage("dceb", plan, usage, setUsage);
+    if (!allowed) {
+      alert(`DCEB limit reached (${limits.dceb}/day). Resets at midnight.`);
+      return;
+    }
+
+    const focusTarget = subNiche ? `${niche} > ${subNiche}` : niche;
+    setLoading(true);
+    const result = await askClaudeJSON(
+      `Analyze "${focusTarget}" as a Print on Demand t-shirt niche. Score each DCEB factor 1-10 with reasoning.
+
+Return JSON: {
+  "niche": "${niche}",
+  "subNiche": "${normalizeSubNicheLabel(subNiche)}",
+  "demand": 1-10,
+  "demandReason": "one sentence why",
+  "competition": 1-10,
+  "competitionReason": "one sentence why",
+  "evergreen": 1-10,
+  "evergreenReason": "one sentence why",
+  "brandability": 1-10,
+  "brandabilityReason": "one sentence why",
+  "summary": "2-3 sentence overall assessment",
+  "suggestedKeywords": ["keyword1", "keyword2", "keyword3"],
+  "verdict": "Go|Maybe|Skip"
+}`,
+      "You are a POD niche analyst. DCEB = Demand, Competition, Evergreen, Brandability. Demand: search volume and audience size for t-shirt buyers. Competition: how saturated the niche is on Amazon Merch, Redbubble, Etsy. Evergreen: year-round vs seasonal appeal. Brandability: potential to build a recognizable sub-brand or product line. Be honest and specific.",
+      "dceb"
+    );
+    setLoading(false);
+
+    if (!result) {
+      alert("Could not run a DCEB recheck right now.");
+      return;
+    }
+
+    const savedEntries = await persistDcebHistory({
+      data,
+      niche,
+      results: [{ ...result, niche, subNiche: normalizeSubNicheLabel(subNiche) }],
+      addItem,
+      updateItem,
+    });
+
+    if (savedEntries[0]) {
+      setSelectedDcebHistoryId(savedEntries[0].id);
+    }
+  };
+
   const applyFormat = (command) => {
     if (!notesRef.current) return;
     notesRef.current.focus();
@@ -7989,6 +8162,13 @@ Return JSON:
               ✦ AI Niche Research
             </Btn>
           )}
+          {limits.dceb > 0 ? (
+            <Btn variant="ghost" onClick={runDcebRecheck} disabled={loading}>
+              Recheck DCEB
+            </Btn>
+          ) : (
+            <LockedBtn tooltip="Upgrade to Starter or Business to run DCEB checks.">Recheck DCEB</LockedBtn>
+          )}
           <Btn variant="ghost" onClick={() => setSelectedNicheContext({ niche, subNiche: "" })}>
             Reset Focus
           </Btn>
@@ -8015,7 +8195,7 @@ Return JSON:
             </div>
             <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14 }}>
               <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 6, fontFamily: font }}>Latest Score</div>
-              <div style={{ color: C.white, fontSize: 18, fontWeight: 700 }}>{primaryNicheRecord?.score || "—"}</div>
+              <div style={{ color: C.white, fontSize: 18, fontWeight: 700 }}>{selectedDcebEntry?.score || primaryNicheRecord?.score || "—"}</div>
             </div>
             <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14 }}>
               <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 6, fontFamily: font }}>Top Keyword</div>
@@ -8096,6 +8276,109 @@ Return JSON:
             </div>
           )}
         </div>
+      </div>
+
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 20, marginBottom: 24 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 16, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontFamily: font, fontSize: 14, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>
+              DCEB History
+            </div>
+            <div style={{ color: C.textDim, fontSize: 15 }}>
+              {focusedDcebHistory.length
+                ? `Showing ${focusedDcebHistory.length} saved DCEB ${focusedDcebHistory.length === 1 ? "check" : "checks"} for this ${subNiche ? "focus area" : "niche"}.`
+                : "Run a DCEB check to start building saved scoring history for this niche."}
+            </div>
+          </div>
+          {selectedDcebEntry && (
+            <Badge color={selectedDcebEntry.verdict === "Go" ? "success" : selectedDcebEntry.verdict === "Maybe" ? "warn" : "danger"}>
+              {selectedDcebEntry.verdict}
+            </Badge>
+          )}
+        </div>
+
+        {selectedDcebEntry ? (
+          <div style={{ display: "grid", gridTemplateColumns: "1.3fr 0.9fr", gap: 20 }}>
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ color: C.white, fontSize: 20, fontWeight: 700 }}>
+                    {selectedDcebEntry.niche}
+                    {selectedDcebEntry.subNiche && selectedDcebEntry.subNiche !== "General" ? ` / ${selectedDcebEntry.subNiche}` : ""}
+                  </div>
+                  <div style={{ color: C.textMuted, fontSize: 13 }}>
+                    Saved {new Date(selectedDcebEntry.createdAt).toLocaleString()}
+                  </div>
+                </div>
+                <div style={{ color: C.accent, fontSize: 28, fontWeight: 800, fontFamily: font }}>
+                  {selectedDcebEntry.score}
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 14 }}>
+                <div>
+                  <DCEBBar label="Demand" letter="D" value={selectedDcebEntry.demand} reason={selectedDcebEntry.demandReason} />
+                  <DCEBBar label="Competition" letter="C" value={selectedDcebEntry.competition} reason={selectedDcebEntry.competitionReason} />
+                </div>
+                <div>
+                  <DCEBBar label="Evergreen" letter="E" value={selectedDcebEntry.evergreen} reason={selectedDcebEntry.evergreenReason} />
+                  <DCEBBar label="Brandability" letter="B" value={selectedDcebEntry.brandability} reason={selectedDcebEntry.brandabilityReason} />
+                </div>
+              </div>
+              {selectedDcebEntry.summary && (
+                <div style={{ background: C.card, borderRadius: 8, padding: 12, borderLeft: `3px solid ${C.accent}` }}>
+                  <div style={{ color: C.text, lineHeight: 1.6 }}>{selectedDcebEntry.summary}</div>
+                </div>
+              )}
+              {selectedDcebEntry.suggestedKeywords?.length > 0 && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>
+                  {selectedDcebEntry.suggestedKeywords.map((item, index) => (
+                    <Badge key={`${item}-${index}`}>{item}</Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16 }}>
+              <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 10, fontFamily: font, textTransform: "uppercase", letterSpacing: 1 }}>
+                Previous Checks
+              </div>
+              <div style={{ display: "grid", gap: 8, maxHeight: 320, overflowY: "auto" }}>
+                {focusedDcebHistory.map((entry) => {
+                  const isActive = entry.id === selectedDcebEntry.id;
+                  return (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      onClick={() => setSelectedDcebHistoryId(entry.id)}
+                      style={{
+                        textAlign: "left",
+                        border: `1px solid ${isActive ? C.accent : C.border}`,
+                        background: isActive ? C.accentGlow : C.card,
+                        borderRadius: 10,
+                        padding: 12,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 4 }}>
+                        <div style={{ color: C.white, fontWeight: 700 }}>
+                          {entry.subNiche && entry.subNiche !== "General" ? entry.subNiche : "General niche"}
+                        </div>
+                        <div style={{ color: C.accent, fontWeight: 700 }}>{entry.score}</div>
+                      </div>
+                      <div style={{ color: C.textDim, fontSize: 13 }}>
+                        {new Date(entry.createdAt).toLocaleDateString()} · {entry.verdict}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ color: C.textMuted, lineHeight: 1.7 }}>
+            No DCEB history saved yet for this focus. Run a check from the Niches tab or use Recheck DCEB here.
+          </div>
+        )}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 24 }}>

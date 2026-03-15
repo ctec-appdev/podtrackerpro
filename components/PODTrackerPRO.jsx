@@ -5270,19 +5270,13 @@ function DatesView({ data, setTab, update }) {
       <div ref={tableRef}>
         <Table
           columns={[
+            { key: "event", label: "Event", maxW: 260 },
             {
               key: "typeLabel",
               label: "Type",
               filterOptions: ["Holiday", "Niche Day"],
               render: (value, row) => (
                 <Badge color={row.type === "holiday" ? "warn" : "accent"}>{value}</Badge>
-              ),
-            },
-            {
-              key: "sourceLabel",
-              label: "Source",
-              render: (value, row) => (
-                <Badge color={row.source === "custom" ? "success" : "accent"}>{value}</Badge>
               ),
             },
             {
@@ -5305,7 +5299,6 @@ function DatesView({ data, setTab, update }) {
             },
             { key: "month", label: "Month", filterable: true },
             { key: "rawDay", label: "Date" },
-            { key: "event", label: "Event", maxW: 260 },
             {
               key: "connections",
               label: "Keywords",
@@ -5354,6 +5347,11 @@ function DatesView({ data, setTab, update }) {
               label: "Coming Up",
               maxW: 150,
               render: (_, row) => row.daysAwayLabel,
+            },
+            {
+              key: "sourceLabel",
+              label: "Source",
+              render: (value) => <span style={{ color: C.textDim }}>{value}</span>,
             },
           ]}
           data={filteredRows}

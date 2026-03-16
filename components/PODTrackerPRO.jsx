@@ -277,10 +277,10 @@ const IDEA_COLUMNS = [
 ];
 
 const OST_NODE_LABELS = {
-  outcome: "Outcome",
-  opportunity: "Opportunity",
+  outcome: "Niche",
+  opportunity: "Subniche",
   solution: "Solution",
-  experiment: "Experiment",
+  experiment: "Idea",
 };
 
 const OST_NODE_COLORS = {
@@ -623,10 +623,10 @@ function generateIdeaId() {
 
 function createOstNode(type, title = "") {
   const fallbackTitles = {
-    outcome: "Desired outcome",
-    opportunity: "Customer opportunity",
+    outcome: "Target niche",
+    opportunity: "Promising subniche",
     solution: "Proposed solution",
-    experiment: "Experiment or test",
+    experiment: "Idea to test",
   };
 
   return {
@@ -643,10 +643,10 @@ function createOpportunityTree(title = "") {
 
   return {
     id: generateTrackerId("ost"),
-    title: title || "New Opportunity Solution Tree",
+    title: title || "New Niche Subniche Tree",
     createdAt: now,
     updatedAt: now,
-    outcome: createOstNode("outcome", "Desired outcome"),
+    outcome: createOstNode("outcome", "Target niche"),
   };
 }
 
@@ -1205,7 +1205,7 @@ async function askClaude(prompt, sys, feature) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         feature,
-        model: "claude-sonnet-4-20250514",
+        model: "claude-3-5-haiku-latest",
         max_tokens: 1000,
         system:
           sys ||
@@ -1228,7 +1228,7 @@ async function askClaudeJSON(prompt, sys, feature) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         feature,
-        model: "claude-sonnet-4-20250514",
+        model: "claude-3-5-haiku-latest",
         max_tokens: 1000,
         system:
           (sys || "You are a Print on Demand expert.") +
@@ -3219,7 +3219,7 @@ export default function PODTracker() {
         {tab === "reports" && <ReportsView data={data} />}
         {tab === "trademark" && <TrademarkView loading={loading} setLoading={setLoading} plan={plan} usage={usage} setUsage={setUsage} />}
         {tab === "research" && <ResearchView data={data} loading={loading} setLoading={setLoading} plan={plan} usage={usage} setUsage={setUsage} />}
-        {tab === "guide" && <GuideView plan={plan} />}
+        {tab === "guide" && <GuideArticlesView />}
       </main>
     </div>
   );
@@ -6895,7 +6895,7 @@ function IdeasView({ data, addItem, updateItem, deleteItem, update, openNicheHom
       setActiveIdeaId(nextIdea.id);
       setCelebration({
         title,
-        message: "Added to the Backlog column from your Opportunity Solution Tree.",
+        message: "Added to the Backlog column from your niche tree.",
       });
     },
     [addItem]
@@ -7587,10 +7587,10 @@ function OpportunityTreeWorkspace({ trees, onSave, onAddNodeToBacklog }) {
   }, []);
 
   const createTree = useCallback(() => {
-    const title = window.prompt("Name this Opportunity Solution Tree", `OST ${draftTrees.length + 1}`);
+    const title = window.prompt("Name this niche tree", `Tree ${draftTrees.length + 1}`);
     if (title === null) return;
 
-    const nextTree = createOpportunityTree(title.trim() || `OST ${draftTrees.length + 1}`);
+    const nextTree = createOpportunityTree(title.trim() || `Tree ${draftTrees.length + 1}`);
     mutateTrees((prev) => [...prev, nextTree]);
     setActiveTreeId(nextTree.id);
   }, [draftTrees.length, mutateTrees]);
@@ -7705,16 +7705,16 @@ function OpportunityTreeWorkspace({ trees, onSave, onAddNodeToBacklog }) {
         <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
           <div>
             <div style={{ fontFamily: font, color: C.accent, fontSize: 13, textTransform: "uppercase", letterSpacing: 1.2 }}>
-              Opportunity Solution Trees
+              Niche Subniche Trees
             </div>
             <h2 style={{ margin: "6px 0 6px", fontSize: 28, color: C.white, fontFamily: sansFont }}>
-              Explore outcomes, opportunities, and experiments without leaving Ideas
+              Explore niches, subniches, and ideas without leaving Ideas
             </h2>
             <p style={{ margin: 0, maxWidth: 780, color: C.textDim, fontSize: 15, lineHeight: 1.6 }}>
-              Keep one OST open at a time, map the path from the customer outcome to concrete tests, and capture notes directly on every node.
+              Keep one tree open at a time, map the path from a niche to subniches and concrete ideas, and capture notes directly on every node.
             </p>
           </div>
-          <Btn onClick={createTree}>+ New OST</Btn>
+          <Btn onClick={createTree}>+ New Tree</Btn>
         </div>
 
         <div style={{ marginTop: 18, border: `1px solid ${C.border}`, borderRadius: 14, background: "rgba(255,255,255,0.02)" }}>
@@ -7740,11 +7740,11 @@ function OpportunityTreeWorkspace({ trees, onSave, onAddNodeToBacklog }) {
           </button>
           {guideOpen && (
             <div style={{ padding: "0 16px 16px", color: C.textDim, fontSize: 14, lineHeight: 1.7 }}>
-              <div>1. Start each OST with a single desired outcome.</div>
-              <div>2. Break that into customer opportunities, then attach solutions and experiments underneath.</div>
+              <div>1. Start each tree with a single niche.</div>
+              <div>2. Break that into subniches, then attach solutions and ideas underneath.</div>
               <div>3. Use notes on every node for evidence, customer quotes, risks, or next steps.</div>
               <div>4. Deleting a node will also delete its children, and the app warns before doing that.</div>
-              <div>5. If you have multiple OSTs, you can copy a subtree into another tree to reuse the work.</div>
+              <div>5. If you have multiple trees, you can copy a subtree into another tree to reuse the work.</div>
             </div>
           )}
         </div>
@@ -7761,7 +7761,7 @@ function OpportunityTreeWorkspace({ trees, onSave, onAddNodeToBacklog }) {
               background: "rgba(255,255,255,0.02)",
             }}
           >
-            Create your first OST to start linking product outcomes to customer opportunities and experiments.
+            Create your first tree to start linking a niche to promising subniches and idea paths.
           </div>
         ) : (
           <div style={{ display: "grid", gap: 14, marginTop: 20 }}>
@@ -7799,7 +7799,7 @@ function OpportunityTreeWorkspace({ trees, onSave, onAddNodeToBacklog }) {
                     <div>
                       <div style={{ fontSize: 18, fontWeight: 700, color: C.white }}>{tree.title || "Untitled OST"}</div>
                       <div style={{ color: C.textMuted, fontSize: 13, marginTop: 4 }}>
-                        {counts.opportunity || 0} opportunities · {counts.solution || 0} solutions · {counts.experiment || 0} experiments
+                        {counts.opportunity || 0} subniches · {counts.solution || 0} solutions · {counts.experiment || 0} ideas
                       </div>
                     </div>
                     <span style={{ color: C.textMuted }}>{isOpen ? "−" : "+"}</span>
@@ -7820,7 +7820,7 @@ function OpportunityTreeWorkspace({ trees, onSave, onAddNodeToBacklog }) {
                         <Input
                           value={tree.title || ""}
                           onChange={(value) => updateTreeMeta(tree.id, { title: value })}
-                          placeholder="OST title"
+                          placeholder="Tree title"
                           style={{ minWidth: 260, flex: "1 1 320px" }}
                         />
                         <Btn variant="danger" onClick={() => deleteTree(tree)}>
@@ -7883,25 +7883,25 @@ function OstTreeNode({
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
       <div
         style={{
-          width: isRoot ? 320 : 280,
+          width: isRoot ? 224 : 196,
           maxWidth: "100%",
           background: palette.background,
           border: `1px solid ${palette.border}`,
-          borderRadius: 16,
-          padding: 14,
+          borderRadius: 11,
+          padding: 10,
           boxShadow: "0 16px 30px rgba(0,0,0,0.16)",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}>
           <span
             style={{
               display: "inline-flex",
               alignItems: "center",
-              padding: "4px 10px",
+              padding: "3px 7px",
               borderRadius: 999,
               background: palette.chip,
               color: "#fff",
-              fontSize: 12,
+              fontSize: 11,
               fontWeight: 700,
               letterSpacing: 0.6,
               textTransform: "uppercase",
@@ -7918,7 +7918,7 @@ function OstTreeNode({
                 background: "transparent",
                 color: "#fca5a5",
                 cursor: "pointer",
-                fontSize: 13,
+                fontSize: 12,
                 fontFamily: font,
               }}
             >
@@ -7931,7 +7931,7 @@ function OstTreeNode({
           value={node.title || ""}
           onChange={(value) => onNodeChange(treeId, node.id, (current) => ({ ...current, title: value }))}
           placeholder={`${OST_NODE_LABELS[node.type]} title`}
-          style={{ width: "100%", marginBottom: 10, background: "rgba(255,255,255,0.92)", color: "#0f172a" }}
+          style={{ width: "100%", marginBottom: 8, background: "rgba(255,255,255,0.92)", color: "#0f172a", fontSize: 13, padding: "9px 10px" }}
         />
 
         <textarea
@@ -7942,25 +7942,25 @@ function OstTreeNode({
           placeholder="Notes, evidence, insights, risks, or open questions..."
           style={{
             width: "100%",
-            minHeight: 96,
+            minHeight: 67,
             resize: "vertical",
-            borderRadius: 12,
+            borderRadius: 9,
             border: `1px solid ${palette.border}`,
             background: "rgba(255,255,255,0.9)",
             color: "#0f172a",
-            padding: 12,
+            padding: 9,
             fontFamily: sansFont,
-            fontSize: 14,
+            fontSize: 13,
             lineHeight: 1.5,
             outline: "none",
           }}
         />
 
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
           <Btn
             variant="ghost"
             onClick={() => onAddToBacklog(node)}
-            style={{ fontSize: 12, padding: "7px 10px" }}
+            style={{ fontSize: 11, padding: "5px 8px" }}
           >
             + Add to Idea Backlog
           </Btn>
@@ -7969,7 +7969,7 @@ function OstTreeNode({
               key={type}
               variant="ghost"
               onClick={() => onAddChild(treeId, node.id, type)}
-              style={{ fontSize: 12, padding: "7px 10px" }}
+              style={{ fontSize: 11, padding: "5px 8px" }}
             >
               + {OST_NODE_LABELS[type]}
             </Btn>
@@ -7977,18 +7977,19 @@ function OstTreeNode({
         </div>
 
         {!isRoot && siblingTrees.length > 0 && (
-          <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 6, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
             <select
               value={copyTargetTreeId}
               onChange={(event) => setCopyTargetTreeId(event.target.value)}
               style={{
-                minWidth: 170,
+                minWidth: 120,
                 background: "rgba(15,23,42,0.9)",
                 color: C.text,
                 border: `1px solid ${C.border}`,
                 borderRadius: 8,
-                padding: "9px 10px",
+                padding: "7px 8px",
                 fontFamily: font,
+                fontSize: 12,
               }}
             >
               <option value="">Copy subtree to...</option>
@@ -8006,7 +8007,7 @@ function OstTreeNode({
                 setCopyTargetTreeId("");
               }}
               disabled={!copyTargetTreeId}
-              style={{ fontSize: 12, padding: "7px 10px" }}
+              style={{ fontSize: 11, padding: "5px 8px" }}
             >
               Copy subtree
             </Btn>
@@ -8016,13 +8017,13 @@ function OstTreeNode({
 
       {!!node.children?.length && (
         <>
-          <div style={{ width: 2, height: 24, background: C.borderLight }} />
+          <div style={{ width: 2, height: 18, background: C.borderLight }} />
           <div
             style={{
               display: "flex",
               alignItems: "flex-start",
               justifyContent: "center",
-              gap: 18,
+              gap: 12,
               width: "100%",
               flexWrap: "nowrap",
             }}
@@ -9188,6 +9189,7 @@ Return JSON: {
 }
 
 // ─── GUIDE VIEW ────────────────────────────────
+// eslint-disable-next-line no-unused-vars
 function GuideView() {
   const sectionStyle = { marginBottom: 32 };
   const h2 = { fontSize: 21, fontWeight: 700, color: C.white, margin: "0 0 12px", fontFamily: sansFont };
@@ -9328,6 +9330,418 @@ function GuideView() {
           Everything you add is saved automatically and persists across sessions. Close this chat, come back tomorrow, and all your niches, keywords, briefs, and inventory will still be here.
         </p>
         <p style={p}>Deleting an item by clicking the ✕ button removes it permanently. There is no undo.</p>
+      </div>
+    </div>
+  );
+}
+
+function GuideArticlesView() {
+  const [openArticleId, setOpenArticleId] = useState("getting-started");
+  const h3 = { fontSize: 17, fontWeight: 600, color: C.accent, margin: "16px 0 8px", fontFamily: font };
+  const p = { fontSize: 15, color: C.textDim, lineHeight: 1.8, margin: "0 0 12px", fontFamily: sansFont };
+  const articleMetaStyle = {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "4px 10px",
+    borderRadius: 999,
+    background: C.surface,
+    border: `1px solid ${C.border}`,
+    color: C.textMuted,
+    fontSize: 12,
+    fontFamily: font,
+    letterSpacing: 0.4,
+  };
+
+  const articles = [
+    {
+      id: "getting-started",
+      title: "Getting Started",
+      category: "Overview",
+      readTime: "2 min read",
+      summary: "Understand the layout, where to begin, and how the core tabs work together.",
+      content: (
+        <>
+          <p style={p}>
+            PODTrackerPro has working tabs for Dashboard, research, design, listings, and this guide. The sidebar on the left lets you move between them quickly.
+          </p>
+          <p style={p}>
+            The Dashboard is your home base. It pulls stats from the rest of the app so you can see what is active, what needs attention, and where your research is building momentum.
+          </p>
+        </>
+      ),
+    },
+    {
+      id: "step-by-step-workflow",
+      title: "Step-by-Step Workflow",
+      category: "Workflow",
+      readTime: "10 min read",
+      summary: "PODTrackerPRO is built around a research-first workflow: niche, keywords, trends, ideas, briefs, copy, publish, and track.",
+      content: (
+        <>
+          <p style={p}>
+            PODTrackerPRO is built around a research-first workflow: niche, keywords, trends, ideation, brief, copy, publish, and track. Every tab plays a role in that sequence. The steps below walk through each one, with instructions for both the Free plan and Starter or Business plans.
+          </p>
+
+          <h3 style={h3}>Step 1 - Research a Niche</h3>
+          <p style={p}>
+            Go to the Niches tab. This is where every project starts. Before a single design gets made, you need confidence that the niche is worth pursuing.
+          </p>
+          <p style={p}>
+            On Starter or Business, type a broad niche like &quot;Fishing,&quot; &quot;Nursing,&quot; or &quot;Hiking,&quot; and click <code>DCEB Auto-Score</code>. AI researches the niche across Amazon, Etsy, Redbubble, Google Trends, and Pinterest, then returns Demand, Competition, Evergreen, and Brandability scores with a <code>YES</code>, <code>MAYBE</code>, or <code>NO</code> verdict.
+          </p>
+          <p style={p}>
+            If you want to go deeper, click <code>Explore Sub-Niches</code> to break the broad niche into specific segments, each with its own DCEB score. This is one of the fastest ways to find an underserved angle inside a crowded market. Click the green <code>+ Add</code> button on any result to save it to your tracker.
+          </p>
+          <p style={p}>
+            On Free, type your niche and use the manual DCEB path. You can enter the required signals and scores yourself, and the app calculates the composite score and verdict automatically. If you are not sure how to score a dimension, use the DCEB Score guide article for the full breakdown.
+          </p>
+
+          <h3 style={h3}>Step 2 - Research Keywords</h3>
+          <p style={p}>
+            Go to the Keywords tab. Once you have a niche worth pursuing, keywords tell you what buyers are actually searching for and which terms give you the best chance of being found.
+          </p>
+          <p style={p}>
+            On Starter or Business, type your niche and click <code>AI Keyword Research</code>. AI suggests keywords with volume and competition estimates. Review the list and click <code>+ Add</code> on the ones most relevant to your design direction.
+          </p>
+          <p style={p}>
+            On Free, enter keywords manually based on your own research. Good starting points include Amazon autocomplete, Etsy search suggestions, and Google Keyword Planner. Add any keyword you want to track so it can support briefs, SEO copy, and niche research later.
+          </p>
+
+          <h3 style={h3}>Step 3 - Scan for Trends</h3>
+          <p style={p}>
+            Go to the Trends tab. Trends catch what standard niche research misses: seasonal spikes, cultural moments, and emerging topics that have not hit peak competition yet.
+          </p>
+          <p style={p}>
+            On Starter or Business, click <code>AI Trend Scan</code> to surface current trending topics relevant to POD. Each trend includes context like relevance and seasonality so you can judge whether it is a short window or a broader opportunity.
+          </p>
+          <p style={p}>
+            On Free, trend tracking is manual. Add trends you spot from platform suggestions, Reddit, social media, or your own sales data. The Trends tab stores and organizes what you add so you can build your own signal history.
+          </p>
+
+          <h3 style={h3}>Step 4 - Find Inspiration from Upcoming Dates</h3>
+          <p style={p}>
+            Go to the Dates tab. Some of the best-selling designs are not reactive, they are planned. The Dates tab surfaces upcoming holidays, observance days, and niche-specific callout dates so you can work ahead of the spike.
+          </p>
+          <p style={p}>
+            On all plans, browse upcoming dates by month, type, or niche filter. When a date looks relevant, connect it to the niche research you are already building and use it as a creative prompt for timely designs.
+          </p>
+
+          <h3 style={h3}>Step 5 - Generate Ideas with the Idea Tree and Kanban</h3>
+          <p style={p}>
+            Go to the Ideas tab. This is where research turns into creative direction. The tab combines the Idea Tree for exploration with the Kanban for execution.
+          </p>
+          <p style={p}>
+            In the Idea Tree, start with a broad niche at the root, then expand outward from niche to subniche to specific idea. When an idea looks promising, send it to the Kanban.
+          </p>
+          <p style={p}>
+            In the Kanban, move cards through <code>Idea</code>, <code>In Progress</code>, <code>Ready to Brief</code>, and <code>Published</code>. This gives you a clear picture of what is in the pipeline and what is ready for the next step.
+          </p>
+
+          <h3 style={h3}>Step 6 - Read Your Reports</h3>
+          <p style={p}>
+            Go to the Reports tab. Once you have scored niches with DCEB, Reports turns those scores into a visual picture of your portfolio so you can compare opportunities side by side.
+          </p>
+          <p style={p}>
+            On all plans, use the Demand versus Competition view to spot strong opportunities quickly, and use the score trend view to watch how a niche changes over time as you rescore it.
+          </p>
+
+          <h3 style={h3}>Step 7 - Create Design Briefs</h3>
+          <p style={p}>
+            Go to the Design Briefs tab. A design brief is the bridge between research and creativity. It turns what you know about the niche into a usable creative direction.
+          </p>
+          <p style={p}>
+            On Starter or Business, enter a niche, optional subniche, and a keyword or slogan, then click <code>AI Generate Briefs</code> to get concept directions, style guidance, slogan ideas, and platform recommendations. Each saved brief gets an ID like <code>DB-001</code> for later reuse.
+          </p>
+          <p style={p}>
+            On Free, create briefs manually by filling in the same fields yourself. The structure is the same even when the research is manual.
+          </p>
+
+          <h3 style={h3}>Step 8 - Generate SEO Copy</h3>
+          <p style={p}>
+            Go to the SEO Copy tab. Good listings do more than describe a design. They reflect buyer intent and platform-specific search behavior.
+          </p>
+          <p style={p}>
+            On Starter or Business, select a Design Brief ID and platform, then click <code>Generate SEO Copy</code>. AI writes titles, bullets, and descriptions within the character limits shown in the UI. Save strong results into templates for reuse.
+          </p>
+          <p style={p}>
+            On Free, write your listing copy manually in the SEO editor. Character counts update in real time so you can stay inside platform limits while you draft.
+          </p>
+
+          <h3 style={h3}>Step 9 - Track Your Listings</h3>
+          <p style={p}>
+            Go to the Inventory tab. Once a design is live, it needs to be tracked. Inventory becomes your master list of everything published across platforms.
+          </p>
+          <p style={p}>
+            On all plans, add SKU, design name, platform, listing URL, and status. Over time this becomes one of the most valuable parts of the tool because it gives you a clear picture of what is live, what is paused, and where gaps exist.
+          </p>
+
+          <h3 style={h3}>Step 10 - Free-Form Research</h3>
+          <p style={p}>
+            Go to the AI Research tab. Sometimes the question does not fit a structured workflow, and this tab gives you an open canvas for broader POD research.
+          </p>
+          <p style={p}>
+            On Starter or Business, ask anything from low-competition niche questions to seasonal keyword research to platform-specific style analysis.
+          </p>
+          <p style={p}>
+            On Free, open-ended AI research is not available, so the manual path is to lean on the structured workflow and the DCEB guide for repeatable niche analysis.
+          </p>
+
+          <h3 style={h3}>Step 11 - Check Your Dashboard</h3>
+          <p style={p}>
+            Go to the Dashboard tab. The Dashboard gives you a real-time summary of where everything stands so you can see what has been done and what still needs attention.
+          </p>
+          <p style={p}>
+            On all plans, use it as a quick session check-in. It surfaces totals for niches, keywords, listings, briefs, platform mix, and recent research activity so you can pick up where you left off.
+          </p>
+
+          <p style={p}>
+            AI-powered features like DCEB Auto-Score, AI Keyword Research, AI Trend Scan, AI Generate Briefs, Generate SEO Copy, and AI Research require an active Starter or Business plan. Manual entry and tracking workflows remain available on the Free plan.
+          </p>
+        </>
+      ),
+    },
+    {
+      id: "dceb-score-skill",
+      title: "DCEB Score Skill",
+      category: "Research Skill",
+      readTime: "8 min read",
+      summary: "Calculate a research-backed Demand / Competition / Evergreen / Brandability score for any POD niche and return a Yes / No / Maybe verdict.",
+      content: (
+        <>
+          <p style={p}>
+            Calculate a research-backed Demand / Competition / Evergreen / Brandability score for any print-on-demand niche, producing a final `YES` / `NO` / `MAYBE` recommendation.
+          </p>
+          <h3 style={h3}>What This Skill Does</h3>
+          <p style={p}>
+            Researches a POD niche across multiple live data sources, assigns scores `1-10` per dimension, computes a weighted composite, and renders a formatted DCEB result card.
+          </p>
+          <h3 style={h3}>Step 1 - Research the Niche</h3>
+          <p style={p}>
+            Use live web search to gather signal across at least `4-6` searches. Prefer platform and primary data over opinion pieces.
+          </p>
+          <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
+            {[
+              'Amazon demand: BSR ranges, bestseller density, example query `"[niche]" t-shirt amazon merch bestseller`',
+              'Etsy demand: listing count and sales badges, example query `"[niche]" shirt etsy sales`',
+              "Redbubble / TeePublic: design volume and trending status",
+              "Google Trends: search interest over time",
+              "Pinterest: visual search and engagement",
+              "Spring / TeeSpring: active store and design presence",
+              "Subtopic depth: how many subniches exist in apparel",
+            ].map((item) => (
+              <div key={item} style={{ ...p, marginBottom: 0 }}>{item}</div>
+            ))}
+          </div>
+          <h3 style={h3}>Step 2 - Score Each Dimension</h3>
+          <p style={p}>
+            Score each category from `1-10` based on the research signals found.
+          </p>
+          <div style={{ display: "grid", gap: 14 }}>
+            <div>
+              <div style={{ color: C.white, fontWeight: 700, marginBottom: 6 }}>D - Demand</div>
+              <div style={p}>Measures real buyer interest and purchase intent for this niche in apparel and merch.</div>
+              <div style={p}>`9-10`: massive hobby or identity niche with strong marketplace evidence. `7-8`: strong community and clear buyer signal. `5-6`: decent but limited evidence. `3-4`: small audience. `1-2`: almost no POD presence.</div>
+            </div>
+            <div>
+              <div style={{ color: C.white, fontWeight: 700, marginBottom: 6 }}>C - Competition</div>
+              <div style={p}>Measures saturation. Lower score means the market is more crowded and harder to break into.</div>
+              <div style={p}>`1-2`: massively saturated. `3-4`: high competition. `5-6`: moderate competition. `7-8`: low-moderate competition. `9-10`: largely untapped.</div>
+            </div>
+            <div>
+              <div style={{ color: C.white, fontWeight: 700, marginBottom: 6 }}>E - Evergreen</div>
+              <div style={p}>Measures long-term staying power and whether the niche remains relevant year-round.</div>
+              <div style={p}>`9-10`: year-round and identity-based. `7-8`: stable with light seasonality. `5-6`: seasonal but viable. `3-4`: trend-driven or narrow season. `1-2`: fad or single-event niche.</div>
+            </div>
+            <div>
+              <div style={{ color: C.white, fontWeight: 700, marginBottom: 6 }}>B - Brandability</div>
+              <div style={p}>Measures whether a creator can build a recognizable repeat-purchase brand in the niche.</div>
+              <div style={p}>`9-10`: strong identity community with clear visual language. `7-8`: good brand potential. `5-6`: possible with strong differentiation. `3-4`: fragmented audience. `1-2`: low loyalty and low brand potential.</div>
+            </div>
+          </div>
+          <h3 style={h3}>Step 3 - Calculate Composite Score</h3>
+          <p style={p}>
+            Weighted formula: `Composite = (D x 0.30) + (C x 0.25) + (E x 0.25) + (B x 0.20)`.
+          </p>
+          <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
+            <div style={p}>`7.0 - 10.0`: `YES` - strong opportunity worth pursuing</div>
+            <div style={p}>`5.0 - 6.9`: `MAYBE` - viable with the right subniche angle</div>
+            <div style={p}>`0.0 - 4.9`: `NO` - not recommended</div>
+          </div>
+          <div style={{ ...p, marginBottom: 0 }}>
+            Override rules: if Competition is 2 or lower and Demand is 8 or higher, cap at `MAYBE`. If Evergreen is 3 or lower, cap at `MAYBE`. If Demand is 3 or lower, force `NO`.
+          </div>
+          <h3 style={h3}>Step 4 - Format the Output</h3>
+          <p style={p}>
+            Render the result as an Active DCEB card for the niche, include `YES` / `NO` / `MAYBE`, then show Demand, Competition, Evergreen, and Brandability with a score and 1-2 sentence rationale each.
+          </p>
+          <p style={p}>
+            Finish with composite score, weighting reminder, and one recommended next step such as a lower-saturation subniche to explore next.
+          </p>
+          <h3 style={h3}>Scoring Standards</h3>
+          <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
+            <div style={p}>Each rationale should name at least one source like Amazon, Etsy, Redbubble, Google Trends, Pinterest, or Spring.</div>
+            <div style={p}>Use specific data when available: listing counts, participant counts, BSR patterns, trend direction, or sales badges.</div>
+            <div style={p}>Be honest. Do not inflate scores just to make a niche look attractive.</div>
+            <div style={p}>Align with PODTrackerPRO&apos;s anti-AI-slop philosophy: real market insight over hype.</div>
+          </div>
+          <h3 style={h3}>Edge Cases</h3>
+          <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
+            <div style={p}>Hyper-specific niches can reduce Demand but improve Competition and Brandability.</div>
+            <div style={p}>Trending or viral niches should trigger aggressive Evergreen caution and possible IP risk notes.</div>
+            <div style={p}>If search results are thin, lower confidence and reflect that with lower Demand and Evergreen scoring.</div>
+            <div style={p}>If the user gives a subniche, score the subniche directly and use the parent niche only for context.</div>
+          </div>
+          <h3 style={h3}>Source Hierarchy</h3>
+          <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
+            <div style={p}>1. Amazon Merch BSR, product count, and bestseller evidence</div>
+            <div style={p}>2. Etsy listing counts and sales badges</div>
+            <div style={p}>3. Redbubble and TeePublic design volume and trending tags</div>
+            <div style={p}>4. Google Trends over 12 months and 5 years</div>
+            <div style={p}>5. Pinterest search and engagement</div>
+            <div style={p}>6. Spring store activity</div>
+            <div style={p}>7. Community-size proxies like Reddit or Facebook</div>
+            <div style={p}>8. General web search participation stats</div>
+          </div>
+          <h3 style={h3}>Important Notes</h3>
+          <p style={p}>
+            Always run live searches. Do not score from memory alone. If one source is unavailable, note the gap and continue with the remaining evidence.
+          </p>
+          <p style={p}>
+            The score is a research tool, not a guarantee. Human creative judgment and subniche differentiation are still what win in POD. AI accelerates research. Humans create meaning.
+          </p>
+        </>
+      ),
+    },
+    {
+      id: "data-sources",
+      title: "PODTrackerPro Data Sources",
+      category: "Reference",
+      readTime: "4 min read",
+      summary: "Know which outputs come from AI, which come from your manual input, and what is saved persistently.",
+      content: (
+        <>
+          <h3 style={h3}>Source 1: Claude AI</h3>
+          <p style={p}>
+            Claude powers DCEB scoring, keyword research, trend scanning, design briefs, and SEO copy. When you click an AI button, the app sends a prompt to Claude over the internet.
+          </p>
+          <h3 style={h3}>Source 2: Your Manual Input</h3>
+          <p style={p}>
+            Inventory tracking and other parts of the app use your direct input from live accounts, listings, sales, and personal research. This is your ground truth.
+          </p>
+          <h3 style={h3}>Source 3: Persistent Storage</h3>
+          <p style={p}>
+            Everything you save is stored in account-linked persistent storage so your work is still there when you come back.
+          </p>
+          <p style={p}>
+            For truly live market data, a normal browsing workflow outside the app is still best. The app is strongest when used as your research, synthesis, and tracking workspace.
+          </p>
+        </>
+      ),
+    },
+    {
+      id: "csv",
+      title: "CSV Import and Export",
+      category: "Reference",
+      readTime: "2 min read",
+      summary: "Bring structured research in and out of the app with sample CSVs and duplicate handling.",
+      content: (
+        <>
+          <p style={p}>
+            Niches, Keywords, Trends, and Inventory support CSV import and export. Sample CSV downloads are included so you can inspect the expected columns before importing your own data.
+          </p>
+          <p style={p}>
+            On import, you can choose to append everything or skip duplicates. Dedupe behavior is based on the identifying fields for that section.
+          </p>
+        </>
+      ),
+    },
+    {
+      id: "your-data",
+      title: "Your Data",
+      category: "Reference",
+      readTime: "2 min read",
+      summary: "Understand how saved work persists and what happens when you delete tracker items.",
+      content: (
+        <>
+          <p style={p}>
+            Everything you add is saved automatically and persists across sessions, including niches, keywords, briefs, listings, custom dates, and niche homepage history.
+          </p>
+          <p style={p}>
+            Deleting an item removes it permanently. There is no undo, so treat destructive actions carefully.
+          </p>
+        </>
+      ),
+    },
+  ];
+
+  return (
+    <div>
+      <h1 style={{ fontSize: 27, fontWeight: 700, margin: "0 0 4px" }}>Guide</h1>
+      <p style={{ color: C.textDim, fontSize: 16, margin: "0 0 32px", fontFamily: font }}>
+        Browse the product guide like an article library. Open any article to read the full details.
+      </p>
+      <div style={{ display: "grid", gap: 14 }}>
+        {articles.map((article, index) => {
+          const isOpen = openArticleId === article.id;
+
+          return (
+            <article
+              key={article.id}
+              style={{
+                border: `1px solid ${isOpen ? C.accentDim : C.border}`,
+                borderRadius: 16,
+                overflow: "hidden",
+                background: isOpen ? C.accentGlow : C.card,
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setOpenArticleId((current) => (current === article.id ? "" : article.id))}
+                style={{
+                  width: "100%",
+                  border: "none",
+                  background: "transparent",
+                  color: C.text,
+                  textAlign: "left",
+                  padding: "18px 20px",
+                  cursor: "pointer",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 18,
+                  alignItems: "flex-start",
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                    <span style={articleMetaStyle}>{article.category}</span>
+                    <span style={articleMetaStyle}>{article.readTime}</span>
+                    <span style={articleMetaStyle}>Article {index + 1}</span>
+                  </div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: C.white, marginBottom: 6, fontFamily: sansFont }}>
+                    {article.title}
+                  </div>
+                  <div style={{ color: C.textDim, fontSize: 15, lineHeight: 1.7 }}>
+                    {article.summary}
+                  </div>
+                </div>
+                <div style={{ color: C.textMuted, fontFamily: font, fontSize: 14, flexShrink: 0 }}>
+                  {isOpen ? "Hide" : "Open"}
+                </div>
+              </button>
+              {isOpen && (
+                <div
+                  style={{
+                    padding: "0 20px 20px",
+                    borderTop: `1px solid ${C.border}`,
+                    background: "rgba(2,6,23,0.18)",
+                  }}
+                >
+                  <div style={{ paddingTop: 18 }}>{article.content}</div>
+                </div>
+              )}
+            </article>
+          );
+        })}
       </div>
     </div>
   );

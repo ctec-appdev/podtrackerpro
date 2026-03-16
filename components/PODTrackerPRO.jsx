@@ -877,6 +877,25 @@ function buildManualDcebResult({
   };
 }
 
+function createAiResearchHistoryEntry(result, fallback = {}) {
+  const snapshot = result?.snapshot || result || {};
+
+  return {
+    id: generateTrackerId("ai-research"),
+    kind: "ai-research",
+    niche: fallback.niche || "",
+    subNiche: normalizeSubNicheLabel(fallback.subNiche || ""),
+    overview: snapshot?.overview || "",
+    audience: snapshot?.audience || "",
+    opportunities: Array.isArray(snapshot?.opportunities) ? snapshot.opportunities : [],
+    risks: Array.isArray(snapshot?.risks) ? snapshot.risks : [],
+    suggestedSubNiches: Array.isArray(snapshot?.suggestedSubNiches) ? snapshot.suggestedSubNiches : [],
+    suggestedKeywords: Array.isArray(snapshot?.suggestedKeywords) ? snapshot.suggestedKeywords : [],
+    nextActions: Array.isArray(snapshot?.nextActions) ? snapshot.nextActions : [],
+    createdAt: new Date().toISOString(),
+  };
+}
+
 async function persistDcebHistory({
   data,
   niche,
@@ -906,6 +925,7 @@ async function persistDcebHistory({
     niche: baseNiche,
     notesHtml: existingProfile?.notesHtml || "<p></p>",
     aiResearch: existingProfile?.aiResearch || null,
+    aiResearchHistory: existingProfile?.aiResearchHistory || [],
     manualDceb: existingProfile?.manualDceb || null,
     dcebHistory: mergedHistory,
     latestDceb: mergedHistory[0] || null,
@@ -8117,6 +8137,13 @@ function NicheHomeView({
       ),
     [profile?.dcebHistory]
   );
+  const aiResearchHistory = useMemo(
+    () =>
+      [...(profile?.aiResearchHistory || [])].sort(
+        (left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+      ),
+    [profile?.aiResearchHistory]
+  );
   const focusedDcebHistory = useMemo(() => {
     if (!subNiche) {
       return dcebHistory;
@@ -8128,6 +8155,17 @@ function NicheHomeView({
         normalizeCompareValue(normalizeSubNicheLabel(subNiche))
     );
   }, [dcebHistory, subNiche]);
+  const focusedAiResearchHistory = useMemo(() => {
+    if (!subNiche) {
+      return aiResearchHistory;
+    }
+
+    return aiResearchHistory.filter(
+      (entry) =>
+        normalizeCompareValue(normalizeSubNicheLabel(entry?.subNiche)) ===
+        normalizeCompareValue(normalizeSubNicheLabel(subNiche))
+    );
+  }, [aiResearchHistory, subNiche]);
   const latestFocusedDceb = focusedDcebHistory[0] || null;
   const selectedDcebEntry =
     focusedDcebHistory.find((entry) => entry.id === selectedDcebHistoryId) || latestFocusedDceb;
@@ -8147,6 +8185,7 @@ function NicheHomeView({
       niche,
       notesHtml: profile?.notesHtml || "<p></p>",
       aiResearch: profile?.aiResearch || null,
+      aiResearchHistory: profile?.aiResearchHistory || [],
       manualDceb: profile?.manualDceb || manualDcebSeed,
       dcebHistory: profile?.dcebHistory || [],
       latestDceb: profile?.latestDceb || null,
@@ -8183,6 +8222,7 @@ function NicheHomeView({
         niche,
         notesHtml: notesRef.current?.innerHTML || profileDraft?.notesHtml || "<p></p>",
         aiResearch: profileDraft?.aiResearch || null,
+        aiResearchHistory: profileDraft?.aiResearchHistory || profile?.aiResearchHistory || [],
         manualDceb: profileDraft?.manualDceb || profile?.manualDceb || manualDcebSeed,
         dcebHistory: profileDraft?.dcebHistory || profile?.dcebHistory || [],
         latestDceb: profileDraft?.latestDceb || profile?.latestDceb || null,
@@ -8199,7 +8239,7 @@ function NicheHomeView({
       setProfileDraft(nextProfile);
       setSavedBanner(true);
     },
-    [addItem, manualDcebSeed, niche, profile?.dcebHistory, profile?.latestDceb, profile?.manualDceb, profileDraft, profileIndex, updateItem]
+    [addItem, manualDcebSeed, niche, profile?.aiResearchHistory, profile?.dcebHistory, profile?.latestDceb, profile?.manualDceb, profileDraft, profileIndex, updateItem]
   );
 
   const runNicheResearch = async () => {
@@ -8264,6 +8304,14 @@ Return JSON:
 
     const snapshot = result?.snapshot || result;
     const dcebResult = result?.dceb;
+    const aiResearchEntry = createAiResearchHistoryEntry(snapshot, {
+      niche,
+      subNiche,
+    });
+    const nextAiResearchHistory = [
+      aiResearchEntry,
+      ...(profileDraft?.aiResearchHistory || profile?.aiResearchHistory || []),
+    ].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
 
     if (dcebResult) {
       const savedEntries = await persistDcebHistory({
@@ -8274,6 +8322,7 @@ Return JSON:
         updateItem,
         profileUpdates: {
           aiResearch: snapshot,
+          aiResearchHistory: nextAiResearchHistory,
           manualDceb: profileDraft?.manualDceb || profile?.manualDceb || manualDcebSeed,
         },
       });
@@ -8283,6 +8332,7 @@ Return JSON:
         niche,
         notesHtml: notesRef.current?.innerHTML || prev?.notesHtml || "<p></p>",
         aiResearch: snapshot,
+        aiResearchHistory: nextAiResearchHistory,
         manualDceb: prev?.manualDceb || profile?.manualDceb || manualDcebSeed,
         dcebHistory: savedEntries.length ? [savedEntries[0], ...(prev?.dcebHistory || profile?.dcebHistory || [])] : prev?.dcebHistory || profile?.dcebHistory || [],
         latestDceb: savedEntries[0] || prev?.latestDceb || profile?.latestDceb || null,
@@ -8296,7 +8346,7 @@ Return JSON:
       return;
     }
 
-    await saveProfile({ aiResearch: snapshot });
+    await saveProfile({ aiResearch: snapshot, aiResearchHistory: nextAiResearchHistory });
   };
 
   const runDcebRecheck = async () => {
@@ -8380,6 +8430,7 @@ Return JSON: {
       updateItem,
       profileUpdates: {
         aiResearch: profileDraft?.aiResearch || profile?.aiResearch || null,
+        aiResearchHistory: profileDraft?.aiResearchHistory || profile?.aiResearchHistory || [],
         manualDceb: draft,
       },
     });
@@ -8389,6 +8440,7 @@ Return JSON: {
       niche,
       notesHtml: notesRef.current?.innerHTML || prev?.notesHtml || "<p></p>",
       aiResearch: prev?.aiResearch || profile?.aiResearch || null,
+      aiResearchHistory: prev?.aiResearchHistory || profile?.aiResearchHistory || [],
       manualDceb: draft,
       dcebHistory: savedEntries.length ? [savedEntries[0], ...(prev?.dcebHistory || profile?.dcebHistory || [])] : prev?.dcebHistory || profile?.dcebHistory || [],
       latestDceb: savedEntries[0] || prev?.latestDceb || profile?.latestDceb || null,
@@ -8464,7 +8516,7 @@ Return JSON: {
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 24 }}>
+      <div style={{ display: "none", gap: 16, flexWrap: "wrap", marginBottom: 24 }}>
         <StatCard label="Sub-Niches" value={subNicheOptions.length} sub="tracked under this niche" />
         <StatCard label="Keywords" value={relatedKeywords.length} sub="linked research terms" color={C.warn} />
         <StatCard label="Briefs" value={relatedBriefs.length} sub="design concepts" color="#8b5cf6" />
@@ -8472,10 +8524,85 @@ Return JSON: {
         <StatCard label="Avg DCEB" value={avgScore} sub="for tracked niche rows" color={C.accent} />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 24, marginBottom: 24 }}>
-        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 24, marginBottom: 24, alignItems: "stretch" }}>
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 20, height: "100%", display: "flex", flexDirection: "column" }}>
           <div style={{ fontFamily: font, fontSize: 14, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14 }}>
             Niche Snapshot
+          </div>
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 18 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 14 }}>
+              <div>
+                <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 6, fontFamily: font, textTransform: "uppercase", letterSpacing: 1 }}>
+                  Active DCEB
+                </div>
+                <div style={{ color: C.textDim, fontSize: 14, lineHeight: 1.6 }}>
+                  {selectedDcebEntry
+                    ? `Showing the saved DCEB result for ${selectedDcebEntry.subNiche && selectedDcebEntry.subNiche !== "General" ? selectedDcebEntry.subNiche : "this niche"}.`
+                    : "No saved DCEB yet. Run AI niche research, recheck DCEB, or build one manually to create the first result."}
+                </div>
+              </div>
+              {selectedDcebEntry ? (
+                <Badge color={selectedDcebEntry.verdict === "Go" ? "success" : selectedDcebEntry.verdict === "Maybe" ? "warn" : "danger"}>
+                  {selectedDcebEntry.verdict}
+                </Badge>
+              ) : (
+                <Badge color="accent">No DCEB Yet</Badge>
+              )}
+            </div>
+
+            {selectedDcebEntry ? (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 14 }}>
+                  <div>
+                    <DCEBBar label="Demand" letter="D" value={selectedDcebEntry.demand} reason={selectedDcebEntry.demandReason} />
+                    <DCEBBar label="Competition" letter="C" value={selectedDcebEntry.competition} reason={selectedDcebEntry.competitionReason} />
+                  </div>
+                  <div>
+                    <DCEBBar label="Evergreen" letter="E" value={selectedDcebEntry.evergreen} reason={selectedDcebEntry.evergreenReason} />
+                    <DCEBBar label="Brandability" letter="B" value={selectedDcebEntry.brandability} reason={selectedDcebEntry.brandabilityReason} />
+                  </div>
+                </div>
+                {selectedDcebEntry.summary ? (
+                  <div style={{ background: C.card, borderRadius: 8, padding: 12, borderLeft: `3px solid ${C.accent}`, marginBottom: 12 }}>
+                    <div style={{ color: C.text, lineHeight: 1.6 }}>{selectedDcebEntry.summary}</div>
+                  </div>
+                ) : null}
+                {selectedDcebEntry.suggestedKeywords?.length > 0 ? (
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {selectedDcebEntry.suggestedKeywords.map((item, index) => (
+                      <Badge key={`${item}-${index}`}>{item}</Badge>
+                    ))}
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <div style={{ display: "grid", gap: 14 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
+                  {[
+                    ["Demand", "D"],
+                    ["Competition", "C"],
+                    ["Evergreen", "E"],
+                    ["Brandability", "B"],
+                  ].map(([label, letter]) => (
+                    <div key={label} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 12 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                        <div style={{ color: C.textMuted, fontSize: 13, fontFamily: font }}>{label}</div>
+                        <div style={{ color: C.textMuted, fontSize: 13, fontFamily: font }}>{letter}</div>
+                      </div>
+                      <div style={{ color: C.white, fontSize: 18, fontWeight: 700, marginBottom: 6 }}>-</div>
+                      <div style={{ color: C.textDim, fontSize: 13, lineHeight: 1.5 }}>
+                        No saved score yet.
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ background: C.card, borderRadius: 8, padding: 12, borderLeft: `3px solid ${C.borderLight}` }}>
+                  <div style={{ color: C.textDim, lineHeight: 1.6 }}>
+                    This section is ready for the first saved DCEB result and will fill in automatically once a check is run or a manual DCEB is saved.
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 14 }}>
             <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14 }}>
@@ -8496,7 +8623,7 @@ Return JSON: {
             </div>
           </div>
 
-          <div style={{ marginTop: 18, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
+          <div style={{ display: "none", marginTop: 18, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 14 }}>
               <div>
                 <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 6, fontFamily: font, textTransform: "uppercase", letterSpacing: 1 }}>
@@ -8674,12 +8801,12 @@ Return JSON: {
           </div>
         </div>
 
-        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 20 }}>
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 20, height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
           <div style={{ fontFamily: font, fontSize: 14, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14 }}>
-            AI Research Snapshot
+            AI Research Support
           </div>
           {profileDraft?.aiResearch ? (
-            <div style={{ display: "grid", gap: 14 }}>
+            <div style={{ display: "grid", gap: 14, overflowY: "auto", flex: 1, minHeight: 0, paddingRight: 6 }}>
               <div style={{ color: C.text, lineHeight: 1.7 }}>{profileDraft.aiResearch.overview}</div>
               <div>
                 <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 6, fontFamily: font }}>Audience</div>
@@ -8707,11 +8834,19 @@ Return JSON: {
               )}
             </div>
           ) : (
-            <div style={{ color: C.textMuted, lineHeight: 1.7 }}>
+            <div style={{ color: C.textMuted, lineHeight: 1.7, overflowY: "auto", flex: 1, minHeight: 0, paddingRight: 6 }}>
               Run AI niche research to generate a strategic snapshot, opportunity set, and next steps for this niche.
             </div>
           )}
         </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 24 }}>
+        <StatCard label="Sub-Niches" value={subNicheOptions.length} sub="tracked under this niche" />
+        <StatCard label="Keywords" value={relatedKeywords.length} sub="linked research terms" color={C.warn} />
+        <StatCard label="Briefs" value={relatedBriefs.length} sub="design concepts" color="#8b5cf6" />
+        <StatCard label="Listings" value={relatedListings.length} sub="live or tracked" color={C.success} />
+        <StatCard label="Avg DCEB" value={avgScore} sub="for tracked niche rows" color={C.accent} />
       </div>
 
       <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 20, marginBottom: 24 }}>
@@ -8897,6 +9032,65 @@ Return JSON: {
             No DCEB history saved yet for this focus. Run a check from the Niches tab or use Recheck DCEB here.
           </div>
         )}
+
+        <div style={{ marginTop: 16, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16 }}>
+          <div style={{ color: C.textMuted, fontSize: 13, marginBottom: 10, fontFamily: font, textTransform: "uppercase", letterSpacing: 1 }}>
+            AI Research Snapshot History
+          </div>
+          {focusedAiResearchHistory.length ? (
+            <div style={{ display: "grid", gap: 10, maxHeight: 360, overflowY: "auto" }}>
+              {focusedAiResearchHistory.map((entry) => (
+                <div
+                  key={entry.id}
+                  style={{
+                    border: `1px solid ${C.border}`,
+                    background: C.card,
+                    borderRadius: 12,
+                    padding: 14,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+                    <div>
+                      <div style={{ color: C.white, fontWeight: 700 }}>
+                        {entry.subNiche && entry.subNiche !== "General" ? `${entry.subNiche} AI Snapshot` : "General AI Snapshot"}
+                      </div>
+                      <div style={{ color: C.textDim, fontSize: 13 }}>
+                        {new Date(entry.createdAt).toLocaleString()}
+                      </div>
+                    </div>
+                    <Badge color="accent">AI Research</Badge>
+                  </div>
+                  <div style={{ color: C.text, lineHeight: 1.6, marginBottom: entry.audience ? 10 : 0 }}>
+                    {entry.overview || "No overview saved."}
+                  </div>
+                  {entry.audience ? (
+                    <div style={{ color: C.textDim, fontSize: 14, marginBottom: 10 }}>
+                      <strong style={{ color: C.white }}>Audience:</strong> {entry.audience}
+                    </div>
+                  ) : null}
+                  {entry.opportunities?.length ? (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                      {entry.opportunities.map((item, index) => (
+                        <Badge key={`${entry.id}-opp-${index}`} color="success">{item}</Badge>
+                      ))}
+                    </div>
+                  ) : null}
+                  {entry.suggestedKeywords?.length ? (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {entry.suggestedKeywords.map((item, index) => (
+                        <Badge key={`${entry.id}-kw-${index}`}>{item}</Badge>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ color: C.textMuted, lineHeight: 1.7 }}>
+              No saved AI research snapshots yet for this focus.
+            </div>
+          )}
+        </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 24 }}>
